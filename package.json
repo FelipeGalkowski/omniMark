@@ -1,0 +1,20 @@
+{
+    "name":  "omnimark",
+    "private":  true,
+    "version":  "0.1.0",
+    "type":  "module",
+    "workspaces":  [
+                       "apps/*"
+                   ],
+    "scripts":  {
+                    "dev":  "npm run dev -w @omnimark/api",
+                    "dev:web":  "npm run dev -w @omnimark/web",
+                    "build":  "npm run build -w @omnimark/web \u0026\u0026 npm run build -w @omnimark/api",
+                    "db:generate":  "npm run db:generate -w @omnimark/api",
+                    "db:migrate":  "npm run db:migrate -w @omnimark/api",
+                    "test":  "npm run test -w @omnimark/web && npm run test -w @omnimark/api -- --run"
+                },
+    "engines":  {
+                    "node":  "\u003e=22"
+                }
+}

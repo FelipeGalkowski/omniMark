@@ -1,0 +1,33 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+.tools/
+.runtime/
+*.tsbuildinfo
+
+# Arquivos de referência locais
+/prototype/
+/scripts/oauth-callback-proxy.mjs
+
+# Configuração de ferramentas e editores
+.codex/
+.agents/
+.claude/
+.figma/
+.idea/
+.vscode/
+
+# Caches, relatórios e backups
+coverage/
+.cache/
+.vite/
+*.pid
+*.bak
+*.dump
+*.sql.gz
+*.pem
+*.key

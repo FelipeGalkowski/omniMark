@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+model User {
+  id String @id @default(uuid())
+  name String
+  email String @unique
+  passwordHash String
+  createdAt DateTime @default(now())
+  memberships CompanyMember[]
+  sessions Session[]
+}
+model Session {
+  id String @id @default(uuid())
+  tokenHash String @unique
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  @@index([userId])
+}
+model Company {
+  id String @id @default(uuid())
+  name String
+  legalName String?
+  cnpj String?
+  createdAt DateTime @default(now())
+  memberships CompanyMember[]
+  accounts MarketplaceAccount[]
+}
+model CompanyMember {
+  userId String
+  companyId String
+  role Role @default(OWNER)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  @@id([userId, companyId])
+}
+enum Role {
+  OWNER
+  ADMIN
+  VIEWER
+}
+enum Marketplace {
+  MERCADO_LIVRE
+  SHOPEE
+  AMAZON
+  MAGALU
+}
+enum ConnectionStatus {
+  PENDING
+  CONNECTED
+  EXPIRED
+  ERROR
+}
+model MarketplaceAccount {
+  id String @id @default(uuid())
+  companyId String
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  marketplace Marketplace
+  externalId String
+  label String
+  status ConnectionStatus @default(PENDING)
+  createdAt DateTime @default(now())
+  orders Order[]
+  credentials MarketplaceCredential?
+  lastSyncAt DateTime?
+  syncFrom DateTime?
+  syncTo DateTime?
+  syncError String?
+  syncLock String?
+  syncLockUntil DateTime?
+  @@unique([marketplace, externalId])
+  @@index([companyId])
+}
+model MarketplaceCredential {
+  accountId String @id
+  account MarketplaceAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  tokenCipher String
+  expiresAt DateTime
+  updatedAt DateTime @updatedAt
+}
+model OAuthAttempt {
+  stateHash String @id
+  sessionHash String
+  userId String
+  companyId String
+  verifierCipher String
+  codeCipher String?
+  denied Boolean @default(false)
+  expiresAt DateTime
+  @@index([expiresAt])
+}
+model Order {
+  id String @id @default(uuid())
+  accountId String
+  account MarketplaceAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  externalId String
+  status String
+  currency String @default("BRL")
+  grossAmount Decimal @db.Decimal(18,2)
+  orderedAt DateTime
+  updatedAt DateTime @updatedAt
+  items OrderItem[]
+  snapshot Json?
+  @@unique([accountId, externalId])
+  @@index([accountId, orderedAt])
+}
+model OrderItem {
+  id String @id @default(uuid())
+  orderId String
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  externalSku String?
+  title String
+  quantity Int
+  unitPrice Decimal @db.Decimal(18,2)
+}

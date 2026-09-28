@@ -1,0 +1,183 @@
+import { randomUUID } from 'node:crypto'
+import type { FastifyInstance } from 'fastify'
+import type { PrismaClient, Prisma } from '@prisma/client'
+import { z } from 'zod'
+import { vault } from './mercadolivre.js'
+
+const identifier = z.union([z.number().int().nonnegative().safe(), z.string().regex(/^\d+$/)]).transform(String)
+const money = z.number().finite().nonnegative()
+const orderSchema = z.object({
+  id: identifier, seller: z.object({ id: identifier }), currency_id: z.literal('BRL'),
+  date_created: z.string().datetime({ offset: true }), status: z.string(), total_amount: money,
+  order_items: z.array(z.object({ item: z.object({ title: z.string() }), quantity: z.number().int().positive(), unit_price: money })).min(1),
+  payments: z.array(z.object({ id: identifier, status: z.string(), date_approved: z.string().nullable().optional(), transaction_amount_refunded: money.nullable().optional(), date_last_modified: z.string().optional() })),
+  shipping: z.object({ id: identifier.nullable() }).nullable().optional(),
+  tags: z.array(z.string()).optional(),
+})
+type RemoteOrder = z.infer<typeof orderSchema>
+export class SyncError extends Error {
+  constructor(public code: number, message: string, public reconnect = false) { super(message) }
+}
+
+export function normalizeOrder(raw: unknown, sellerId: string, shipping: number | null, shipmentStatus?: string) {
+  const order = orderSchema.parse(raw)
+  if (order.seller.id !== sellerId) throw new SyncError(502, 'A API retornou um pedido de outro vendedor.')
+  const payments = [...new Map(order.payments.map(p => [p.id, p])).values()]
+  const approved = payments.filter(p => !!p.date_approved || ['approved', 'refunded', 'charged_back'].includes(p.status))
+  const paymentConfirmed = approved.length > 0
+  const refundsKnown = approved.every(p => p.transaction_amount_refunded !== undefined && p.transaction_amount_refunded !== null && p.status !== 'charged_back')
+  const status = order.status === 'cancelled' ? 'cancelled' : shipmentStatus === 'delivered' ? 'delivered' : ['shipped', 'out_for_delivery'].includes(shipmentStatus ?? '') ? 'shipped' : paymentConfirmed ? 'paid' : 'pending'
+  return {
+    id: order.id, marketplace: 'mercadolivre', date: order.date_created, status,
+    items: order.order_items.map(i => ({ name: i.item.title, qty: i.quantity, unitPrice: i.unit_price })),
+    shipping: shipping ?? 0,
+    shippingKnown: shipping !== null,
+    financials: shipping === null ? null : {
+      paymentConfirmed, discount: 0, productsTotal: order.total_amount,
+      refundsKnown, returnsKnown: false,
+      refunds: approved.filter(p => (p.transaction_amount_refunded ?? 0) > 0).map(p => ({ id: `payment-${p.id}`, amount: p.transaction_amount_refunded!, status: 'confirmed', date: p.date_last_modified ?? order.date_created })),
+      returns: [],
+    },
+  }
+}
+
+export async function readAllOrders(get: (path: string) => Promise<unknown>, sellerId: string, from: Date, to: Date) {
+  const records = new Map<string, RemoteOrder>()
+  let offset = 0
+  let expected: number | null = null
+  while (true) {
+    const params = new URLSearchParams({ seller: sellerId, 'order.status': 'confirmed,payment_required,payment_in_process,partially_paid,paid,cancelled,invalid', 'order.date_created.from': from.toISOString(), 'order.date_created.to': to.toISOString(), sort: 'date_asc', limit: '50', offset: String(offset) })
+    const page = z.object({ results: z.array(z.unknown()), paging: z.object({ total: z.number().int().nonnegative() }) }).parse(await get(`/orders/search?${params}`))
+    if (expected !== null && expected !== page.paging.total) throw new SyncError(409, 'Os pedidos mudaram durante a consulta. Sincronize novamente.')
+    expected = page.paging.total
+    if (expected > 10000) throw new SyncError(422, 'O volume excede o limite desta sincronização. É necessário importar por intervalos menores.')
+    for (const raw of page.results) {
+      const order = orderSchema.parse(raw)
+      if (order.seller.id !== sellerId) throw new SyncError(502, 'Pedido incompatível com a conta consultada.')
+      records.set(order.id, order)
+    }
+    offset += page.results.length
+    if (offset >= expected) break
+    if (!page.results.length) throw new SyncError(502, 'A API interrompeu a paginação. Nenhum resultado parcial foi publicado.')
+  }
+  if (records.size !== expected) throw new SyncError(409, 'Paginação inconsistente. Sincronize novamente.')
+  return [...records.values()]
+}
+
+export async function syncAccount(db: PrismaClient, accountId: string, request: typeof fetch = fetch) {
+  const lock = randomUUID()
+  const acquired = await db.marketplaceAccount.updateMany({ where: { id: accountId, marketplace: 'MERCADO_LIVRE', OR: [{ syncLockUntil: null }, { syncLockUntil: { lt: new Date() } }] }, data: { syncLock: lock, syncLockUntil: new Date(Date.now() + 15 * 60_000) } })
+  if (!acquired.count) throw new SyncError(409, 'Já existe uma sincronização em andamento para esta conta.')
+  const deadline = Date.now() + 10 * 60_000
+  try {
+    const account = await db.marketplaceAccount.findUniqueOrThrow({ where: { id: accountId }, include: { credentials: true } })
+    if (!account.credentials) throw new SyncError(409, 'Reconecte a conta ao Mercado Livre.', true)
+    const crypt = vault(process.env.TOKEN_ENCRYPTION_KEY ?? '')
+    let tokens = z.object({ accessToken: z.string(), refreshToken: z.string() }).parse(JSON.parse(crypt.open(account.credentials.tokenCipher)))
+    let credentialCipher = account.credentials.tokenCipher
+    async function refresh() {
+      if (!process.env.ML_CLIENT_ID || !process.env.SECRET_KEY_ML) throw new SyncError(503, 'Credenciais da aplicação não configuradas no servidor.')
+      const response = await request('https://api.mercadolibre.com/oauth/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'refresh_token', client_id: process.env.ML_CLIENT_ID, client_secret: process.env.SECRET_KEY_ML, refresh_token: tokens.refreshToken }), signal: AbortSignal.timeout(20000) })
+      if (!response.ok) {
+        const failure = await response.json().catch(() => ({})) as { error?: string }
+        const expired = failure.error === 'invalid_grant' || response.status === 401
+        throw new SyncError(expired ? 409 : 502, expired ? 'A autorização expirou ou foi revogada. Reconecte a conta.' : 'O Mercado Livre não permitiu renovar a autorização. Tente novamente.', expired)
+      }
+      const result = z.object({ access_token: z.string().min(1), refresh_token: z.string().min(1), expires_in: z.number().positive(), user_id: identifier }).parse(await response.json())
+      if (result.user_id !== account.externalId) throw new SyncError(502, 'A identidade da autorização não corresponde à conta.')
+      tokens = { accessToken: result.access_token, refreshToken: result.refresh_token }
+      const cipher = crypt.seal(JSON.stringify(tokens))
+      const saved = await db.marketplaceCredential.updateMany({ where: { accountId, tokenCipher: credentialCipher }, data: { tokenCipher: cipher, expiresAt: new Date(Date.now() + result.expires_in * 1000) } })
+      if (!saved.count) throw new SyncError(409, 'A autorização foi alterada durante a sincronização. Tente novamente.')
+      credentialCipher = cipher
+    }
+    if (account.credentials.expiresAt.getTime() <= Date.now() + 30000) await refresh()
+    async function get(path: string): Promise<unknown> {
+      let refreshed = false
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (Date.now() > deadline) throw new SyncError(504, 'A sincronização excedeu o tempo limite. Tente novamente.')
+        const response = await request(`https://api.mercadolibre.com${path}`, { headers: { Authorization: `Bearer ${tokens.accessToken}`, 'x-format-new': 'true', 'X-New-Domain': 'true' }, signal: AbortSignal.timeout(20000) })
+        if (response.status === 401 && !refreshed) { await refresh(); refreshed = true; continue }
+        if ((response.status === 429 || response.status >= 500) && attempt < 2) { await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1))); continue }
+        if (!response.ok) throw new SyncError(response.status === 401 ? 409 : 502, response.status === 403 ? 'O Mercado Livre recusou acesso aos pedidos ou envios. Revise as permissões da aplicação.' : `Consulta ao Mercado Livre falhou (HTTP ${response.status}). Tente novamente.`, response.status === 401)
+        return response.json()
+      }
+      throw new SyncError(502, 'Não foi possível concluir a consulta ao Mercado Livre.')
+    }
+    const to = new Date()
+    to.setUTCMinutes(0, 0, 0)
+    to.setUTCHours(to.getUTCHours() + 1)
+    const from = new Date(to)
+    from.setUTCFullYear(from.getUTCFullYear() - 1)
+    const remote = await readAllOrders(get, account.externalId, from, to)
+    const shipmentCache = new Map<string, { cost: number | null; status?: string; orderIds: string[] }>()
+    const normalized: ReturnType<typeof normalizeOrder>[] = []
+    let incomplete = 0
+    for (const order of remote) {
+      let shipping: number | null = null
+      let shipmentStatus: string | undefined
+      const shipmentId = order.shipping?.id
+      if (shipmentId) {
+        if (!shipmentCache.has(shipmentId)) {
+          try {
+            const shipment = z.object({ status: z.string() }).parse(await get(`/shipments/${shipmentId}`))
+            const costs = z.object({ receiver: z.object({ cost: money }) }).parse(await get(`/shipments/${shipmentId}/costs`))
+            const linked = z.array(z.object({ order_id: identifier })).parse(await get(`/shipments/${shipmentId}/orders`))
+            shipmentCache.set(shipmentId, { cost: costs.receiver.cost, status: shipment.status, orderIds: [...new Set(linked.map(i => i.order_id))] })
+          } catch (error) {
+            if (error instanceof SyncError && error.reconnect) throw error
+            shipmentCache.set(shipmentId, { cost: null, orderIds: [] })
+          }
+        }
+        const shipment = shipmentCache.get(shipmentId)!
+        shipmentStatus = shipment.status
+        // A shared shipment requires reconciliation; do not charge its full cost to every order.
+        if (shipment.cost === 0 || (shipment.orderIds.length === 1 && shipment.orderIds[0] === order.id)) shipping = shipment.cost
+      } else if (order.tags?.includes('no_shipping') || order.status === 'cancelled') shipping = 0
+      const snapshot = normalizeOrder(order, account.externalId, shipping, shipmentStatus)
+      if (!snapshot.financials || !snapshot.financials.refundsKnown) incomplete++
+      normalized.push(snapshot)
+    }
+    const completedAt = new Date()
+    await db.$transaction(async tx => {
+      const owned = await tx.marketplaceAccount.updateMany({ where: { id: accountId, syncLock: lock }, data: { lastSyncAt: completedAt, syncFrom: from, syncTo: completedAt, syncError: null, status: 'CONNECTED' } })
+      if (!owned.count) throw new SyncError(409, 'A sincronização perdeu sua reserva. Tente novamente.')
+      for (const snapshot of normalized) {
+        const data = { status: snapshot.status, currency: 'BRL', orderedAt: new Date(snapshot.date), grossAmount: snapshot.financials ? snapshot.financials.productsTotal + snapshot.shipping : remote.find(o => o.id === snapshot.id)!.total_amount, snapshot: snapshot as Prisma.InputJsonValue }
+        const saved = await tx.order.upsert({ where: { accountId_externalId: { accountId, externalId: snapshot.id } }, create: { accountId, externalId: snapshot.id, ...data }, update: data })
+        await tx.orderItem.deleteMany({ where: { orderId: saved.id } })
+        await tx.orderItem.createMany({ data: snapshot.items.map(i => ({ orderId: saved.id, title: i.name, quantity: i.qty, unitPrice: i.unitPrice })) })
+      }
+    }, { timeout: 60000 })
+    return { accountId, orders: normalized.length, incomplete, lastSyncAt: completedAt.toISOString(), from: from.toISOString(), to: completedAt.toISOString() }
+  } catch (error) {
+    const failure = error instanceof SyncError ? error : new SyncError(502, 'Não foi possível importar os dados. Verifique a conexão e tente novamente.')
+    await db.marketplaceAccount.updateMany({ where: { id: accountId, syncLock: lock }, data: { syncError: failure.message, ...(failure.reconnect ? { status: 'EXPIRED' } : {}) } })
+    throw failure
+  } finally {
+    await db.marketplaceAccount.updateMany({ where: { id: accountId, syncLock: lock }, data: { syncLock: null, syncLockUntil: null } })
+  }
+}
+
+export function registerOrderSync(app: FastifyInstance, db: PrismaClient, authenticated: any, origin: string) {
+  app.get('/companies/:id/orders', { preHandler: authenticated }, async (req: any, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
+    const member = await db.companyMember.findUnique({ where: { userId_companyId: { userId: req.currentUser.id, companyId: id } } })
+    if (!member) return reply.code(404).send({ error: 'Empresa não encontrada.' })
+    const accounts = await db.marketplaceAccount.findMany({ where: { companyId: id }, select: { id: true, marketplace: true, lastSyncAt: true, syncFrom: true, syncTo: true } })
+    const rows = await db.order.findMany({ where: { account: { companyId: id } }, select: { snapshot: true, accountId: true }, orderBy: { orderedAt: 'desc' } })
+    reply.header('Cache-Control', 'no-store')
+    return { orders: rows.filter(row => row.snapshot).map(row => ({ ...(row.snapshot as object), companyId: id, accountId: row.accountId })), coverage: accounts }
+  })
+  app.post('/companies/:id/accounts/:accountId/sync', { preHandler: authenticated }, async (req: any, reply) => {
+    if (req.headers.origin !== origin) return reply.code(403).send({ error: 'Origem não permitida.' })
+    const { id, accountId } = z.object({ id: z.string().uuid(), accountId: z.string().uuid() }).parse(req.params)
+    const member = await db.companyMember.findUnique({ where: { userId_companyId: { userId: req.currentUser.id, companyId: id } } })
+    if (!member) return reply.code(404).send({ error: 'Empresa não encontrada.' })
+    if (member.role === 'VIEWER') return reply.code(403).send({ error: 'Somente administradores podem sincronizar contas.' })
+    const account = await db.marketplaceAccount.findFirst({ where: { id: accountId, companyId: id, marketplace: 'MERCADO_LIVRE' } })
+    if (!account) return reply.code(404).send({ error: 'Conta não encontrada.' })
+    try { return await syncAccount(db, accountId) }
+    catch (error) { if (error instanceof SyncError) return reply.code(error.code).send({ error: error.message }); throw error }
+  })
+}
