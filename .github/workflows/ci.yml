@@ -1,0 +1,22 @@
+name: Checks
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [main, develop]
+permissions:
+  contents: read
+jobs:
+  test-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm test
+      - run: npm run build
+      - run: docker build -t omnimark:check .

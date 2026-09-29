@@ -10,13 +10,17 @@ import argon2 from 'argon2'
 import { z } from 'zod'
 import { registerMercadoLivre } from './mercadolivre.js'
 import { registerOrderSync } from './order-sync.js'
+import { registerWeb, rewriteApiUrl } from './web.js'
 
 const db = new PrismaClient()
-const app = Fastify({ logger: { serializers: { req: req => ({ method: req.method, url: req.url?.split('?')[0] }) } } })
+const app = Fastify({ trustProxy: process.env.TRUST_PROXY === 'true', rewriteUrl: req => rewriteApiUrl(req.url ?? '/'), logger: { serializers: { req: req => ({ method: req.method, url: req.url?.split('?')[0] }) } } })
 const origin = process.env.WEB_ORIGIN ?? 'http://localhost:5173'
 await app.register(cors, { origin, credentials: true })
 await app.register(cookie)
-await app.register(helmet)
+await app.register(helmet, { contentSecurityPolicy: { directives: {
+  styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+  fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+} } })
 await app.register(rateLimit, { max: 100, timeWindow: '1 minute' })
 const secure = process.env.NODE_ENV === 'production'
 const cookieName = secure ? '__Host-omnimark_session' : 'omnimark_session'
@@ -113,5 +117,8 @@ app.get('/companies/:id/dashboard', { preHandler: authenticated }, async (req: a
 })
 registerMercadoLivre(app, db, authenticated, cookieName, origin)
 registerOrderSync(app, db, authenticated, origin)
+if (process.env.SERVE_WEB === 'true') await registerWeb(app, process.env.WEB_DIST_PATH ?? '../web/dist')
+app.addHook('onClose', async () => { await db.$disconnect() })
+for (const signal of ['SIGTERM', 'SIGINT'] as const) process.once(signal, () => { void app.close() })
 const port = Number(process.env.PORT ?? 3001)
 try { await app.listen({ port, host: '0.0.0.0' }) } catch (error) { app.log.error(error); process.exit(1) }
