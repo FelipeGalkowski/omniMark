@@ -4,20 +4,22 @@ const cents = (amount: number) => Math.round((amount + Number.EPSILON) * 100)
 const uniqueOrders = (orders: Order[]) => [...new Map(orders.map(order => [JSON.stringify([order.companyId, order.accountId, order.id]), order])).values()]
 
 export function orderSale(order: Order): number | null {
-  if (!order.financials) return null
-  const products = order.items.reduce((total, item) => total + cents(item.unitPrice) * item.qty, 0)
-  return (products - cents(order.financials.discount) + cents(order.shipping)) / 100
+  if (!order.financials || order.shippingKnown === false) return null
+  const products = order.financials.productsTotal !== undefined ? cents(order.financials.productsTotal) : order.items.reduce((total, item) => total + cents(item.unitPrice) * item.qty, 0) - cents(order.financials.discount)
+  return (products + cents(order.shipping)) / 100
 }
 
 export function confirmedRefunds(order: Order): number | null {
-  if (!order.financials) return null
+  if (!order.financials || order.financials.refundsKnown === false) return null
   const refunds = [...new Map(order.financials.refunds.map(refund => [refund.id, refund])).values()]
   return refunds.filter(refund => refund.status === 'confirmed').reduce((total, refund) => total + cents(refund.amount), 0) / 100
 }
 
 export function summarizeOrders(input: Order[]) {
   const orders = uniqueOrders(input)
-  const complete = orders.every(order => !!order.financials)
+  const complete = orders.every(order => !!order.financials && (!order.financials.paymentConfirmed || orderSale(order) !== null))
+  const refundsComplete = orders.every(order => confirmedRefunds(order) !== null)
+  const returnsComplete = orders.every(order => !!order.financials && order.financials.returnsKnown !== false)
   const sales = orders.filter(order => order.financials?.paymentConfirmed)
   const grossCents = sales.reduce((total, order) => total + cents(orderSale(order)!), 0)
   const refundedCents = sales.reduce((total, order) => total + cents(confirmedRefunds(order)!), 0)
@@ -26,16 +28,16 @@ export function summarizeOrders(input: Order[]) {
   return {
     complete,
     gross: complete ? grossCents / 100 : null,
-    refunds: complete ? refundedCents / 100 : null,
-    adjusted: complete ? (grossCents - refundedCents) / 100 : null,
+    refunds: complete && refundsComplete ? refundedCents / 100 : null,
+    adjusted: complete && refundsComplete ? (grossCents - refundedCents) / 100 : null,
     count: complete ? sales.length : null,
     ticket: complete && sales.length ? grossCents / 100 / sales.length : null,
-    refundOrders: complete ? refundOrders : null,
+    refundOrders: refundsComplete ? refundOrders : null,
     cancelled: orders.filter(order => order.status === 'cancelled').length,
-    cancelledValue: complete ? orders.filter(order => order.status === 'cancelled').reduce((total, order) => total + cents(orderSale(order)!), 0) / 100 : null,
-    returns: complete ? returnStates.filter(states => states.some(item => item.status !== 'cancelled')).length : null,
-    returnsPending: complete ? returnStates.filter(states => states.some(item => item.status === 'requested' || item.status === 'in_progress')).length : null,
-    returnsCompleted: complete ? returnStates.filter(states => states.some(item => item.status === 'completed')).length : null,
+    cancelledValue: orders.filter(order => order.status === 'cancelled').every(order => orderSale(order) !== null) ? orders.filter(order => order.status === 'cancelled').reduce((total, order) => total + cents(orderSale(order)!), 0) / 100 : null,
+    returns: returnsComplete ? returnStates.filter(states => states.some(item => item.status !== 'cancelled')).length : null,
+    returnsPending: returnsComplete ? returnStates.filter(states => states.some(item => item.status === 'requested' || item.status === 'in_progress')).length : null,
+    returnsCompleted: returnsComplete ? returnStates.filter(states => states.some(item => item.status === 'completed')).length : null,
   }
 }
 

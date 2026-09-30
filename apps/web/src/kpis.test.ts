@@ -8,6 +8,11 @@ function order(changes: Partial<Order> = {}): Order {
 const refund = (id: string, amount: number) => ({ id, amount, status: 'confirmed' as const, date: new Date(2025, 1, 10) })
 
 describe('Indicadores de vendas', () => {
+  it('usa total importado e distingue frete, reembolsos e devoluções desconhecidos', () => {
+    const imported = order({ financials: { paymentConfirmed: true, discount: 0, productsTotal: 180, refundsKnown: false, returnsKnown: false, refunds: [], returns: [] } })
+    expect(summarizeOrders([imported])).toMatchObject({ gross: 210, refunds: null, adjusted: null, returns: null })
+    expect(summarizeOrders([{ ...imported, shippingKnown: false }])).toMatchObject({ complete: false, gross: null, adjusted: null })
+  })
   it('inclui frete do comprador e desconta somente o desconto informado', () => {
     expect(orderSale(order())).toBe(220)
     expect(orderSale(order({ shipping: 0 }))).toBe(190)

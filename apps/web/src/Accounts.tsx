@@ -17,9 +17,10 @@ interface AccountsPageProps {
   accounts: Account[]
   setAccounts: React.Dispatch<React.SetStateAction<Account[]>>
   canEdit?: boolean
+  onSynced?: () => void
 }
 
-export default function AccountsPage({ companyId, accounts, setAccounts, canEdit = true }: AccountsPageProps) {
+export default function AccountsPage({ companyId, accounts, setAccounts, canEdit = true, onSynced }: AccountsPageProps) {
   const { user } = useAuth()
   const demo = user.isDemoUser
   const companyAccounts = accounts.filter(a => a.companyId === companyId)
@@ -27,10 +28,22 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
   const [syncing,     setSyncing]     = useState<Set<string>>(new Set())
   const [feedback,    setFeedback]    = useState<Record<string, { ok: boolean; msg: string }>>({})
 
-  function triggerUpdate(id: string) {
-    if (!demo || syncing.has(id)) return
+  async function triggerUpdate(id: string) {
+    if (syncing.has(id) || (!demo && !canEdit)) return
     setSyncing(s => new Set([...s, id]))
     setFeedback(f => { const n = {...f}; delete n[id]; return n })
+    if (!demo) {
+      try {
+        const result = await api<{ orders: number; incomplete: number }>(`/companies/${companyId}/accounts/${id}/sync`, { method: 'POST', body: '{}' })
+        setFeedback(f => ({ ...f, [id]: { ok: true, msg: `${result.orders} pedidos sincronizados.${result.incomplete ? ` ${result.incomplete} com dados financeiros incompletos.` : ''}` } }))
+      } catch (error) {
+        setFeedback(f => ({ ...f, [id]: { ok: false, msg: (error as Error).message } }))
+      } finally {
+        setSyncing(s => { const next = new Set(s); next.delete(id); return next })
+        onSynced?.()
+      }
+      return
+    }
     setTimeout(() => {
       setSyncing(s => { const n = new Set(s); n.delete(id); return n })
       setAccounts(prev => prev.map(a => a.id === id ? { ...a, status:"connected" as const, lastSync: new Date(DEMO_NOW) } : a))
@@ -69,7 +82,7 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
       <div style={{ background:"var(--sf3)", border:"1px solid var(--bd)", borderRadius:10, padding:"10px 16px", display:"flex", alignItems:"center", gap:10 }}>
         <span style={{ fontSize:16 }}>ℹ️</span>
         <span style={{ fontSize:12, color:"var(--t2)" }}>
-          {demo ? <><strong>Demonstração:</strong> as conexões aqui são fictícias. As ações simulam uma integração e não acessam os marketplaces.</> : <><strong>Conecte sua conta do Mercado Livre.</strong> A importação de pedidos será disponibilizada em uma próxima etapa.</>}
+          {demo ? <><strong>Demonstração:</strong> as conexões aqui são fictícias. As ações simulam uma integração e não acessam os marketplaces.</> : <><strong>Mercado Livre.</strong> Atualize os dados para consultar os pedidos dos últimos 12 meses. Informações indisponíveis serão identificadas no painel.</>}
         </span>
       </div>
 
@@ -110,7 +123,7 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
                   </div>
                   <div style={{ fontSize:12, color:"var(--t3)", marginTop:3 }}>{mkt.label}</div>
 
-                  {(acct.status === "error" || acct.status === "reconnect_needed") && acct.errorMsg && (
+                  {acct.errorMsg && (
                     <div style={{ marginTop:8, background: acct.status==="error"?"#FEE2E2":"#FEF3C7", border:`1px solid ${acct.status==="error"?"#FCA5A5":"#FCD34D"}`, borderRadius:8, padding:"8px 12px", fontSize:12, color: acct.status==="error"?"#991B1B":"#92400E" }}>
                       {acct.errorMsg}
                     </div>
@@ -136,7 +149,7 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
                   {acct.status !== "reconnect_needed" && (
                     <button
                       onClick={() => triggerUpdate(acct.id)}
-                      disabled={!demo || isSyncing}
+                      disabled={isSyncing || (!demo && (!canEdit || acct.marketplace !== 'mercadolivre'))}
                       style={{ ...btnSec, fontSize:12, padding:"6px 14px", opacity:isSyncing?0.5:1, cursor:isSyncing?"not-allowed":"pointer" }}
                     >
                       {isSyncing ? "Atualizando…" : "Atualizar dados"}

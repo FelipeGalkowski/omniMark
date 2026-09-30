@@ -15,6 +15,7 @@ const orderSchema = z.object({
   tags: z.array(z.string()).optional(),
 })
 type RemoteOrder = z.infer<typeof orderSchema>
+type OrderReturn = { id: string; status: 'requested' | 'in_progress' | 'completed' | 'cancelled' }
 export class SyncError extends Error {
   constructor(public code: number, message: string, public reconnect = false) { super(message) }
 }
@@ -32,13 +33,49 @@ export function normalizeOrder(raw: unknown, sellerId: string, shipping: number 
     items: order.order_items.map(i => ({ name: i.item.title, qty: i.quantity, unitPrice: i.unit_price })),
     shipping: shipping ?? 0,
     shippingKnown: shipping !== null,
-    financials: shipping === null ? null : {
+    financials: {
       paymentConfirmed, discount: 0, productsTotal: order.total_amount,
       refundsKnown, returnsKnown: false,
       refunds: approved.filter(p => (p.transaction_amount_refunded ?? 0) > 0).map(p => ({ id: `payment-${p.id}`, amount: p.transaction_amount_refunded!, status: 'confirmed', date: p.date_last_modified ?? order.date_created })),
-      returns: [],
+      returns: [] as OrderReturn[],
     },
   }
+}
+
+export async function readReturns(get: (path: string) => Promise<unknown>, orderId: string, sellerId: string): Promise<OrderReturn[]> {
+  const claims = new Set<string>()
+  const returns = new Map<string, OrderReturn>()
+  let offset = 0
+  let expected: number | undefined
+  while (true) {
+    if (offset + 30 >= 10000) throw new Error('Limite de reclamações excedido.')
+    const params = new URLSearchParams({ order_id: orderId, limit: '30', offset: String(offset) })
+    const page = z.object({ paging: z.object({ total: z.number().int().nonnegative() }), data: z.array(z.object({
+      id: identifier, type: z.string(), related_entities: z.array(z.string()),
+      players: z.array(z.object({ type: z.string(), user_id: identifier })),
+    })) }).parse(await get(`/post-purchase/v1/claims/search?${params}`))
+    if (expected !== undefined && expected !== page.paging.total) throw new Error('Reclamações alteradas durante a consulta.')
+    expected = page.paging.total
+    for (const claim of page.data) {
+      if (claims.has(claim.id) || !claim.players.some(player => player.type === 'seller' && player.user_id === sellerId)) throw new Error('Reclamação inconsistente.')
+      claims.add(claim.id)
+      if (!claim.related_entities.includes('return') && claim.type !== 'return') continue
+      const result = z.object({ id: identifier, status: z.string() }).parse(await get(`/post-purchase/v2/claims/${claim.id}/returns`))
+      const statuses: Record<string, OrderReturn['status']> = {
+        pending: 'requested', label_generated: 'requested', scheduled: 'requested',
+        shipped: 'in_progress', pending_delivered: 'in_progress', not_delivered: 'in_progress',
+        pending_cancel: 'in_progress', pending_expiration: 'in_progress', return_to_buyer: 'in_progress',
+        delivered: 'completed', cancelled: 'cancelled', expired: 'cancelled',
+      }
+      if (!statuses[result.status]) throw new Error('Situação de devolução ainda não reconhecida.')
+      returns.set(result.id, { id: result.id, status: statuses[result.status] })
+    }
+    offset += page.data.length
+    if (offset >= expected) break
+    if (!page.data.length) throw new Error('Consulta incompleta de reclamações.')
+  }
+  if (claims.size !== expected) throw new Error('Consulta inconsistente de reclamações.')
+  return [...returns.values()]
 }
 
 export async function readAllOrders(get: (path: string) => Promise<unknown>, sellerId: string, from: Date, to: Date) {
@@ -46,7 +83,7 @@ export async function readAllOrders(get: (path: string) => Promise<unknown>, sel
   let offset = 0
   let expected: number | null = null
   while (true) {
-    const params = new URLSearchParams({ seller: sellerId, 'order.status': 'confirmed,payment_required,payment_in_process,partially_paid,paid,cancelled,invalid', 'order.date_created.from': from.toISOString(), 'order.date_created.to': to.toISOString(), sort: 'date_asc', limit: '50', offset: String(offset) })
+    const params = new URLSearchParams({ seller: sellerId, 'order.status': 'confirmed,payment_required,payment_in_process,partially_paid,paid,partially_refunded,pending_cancel,cancelled,invalid', 'order.date_created.from': from.toISOString(), 'order.date_created.to': to.toISOString(), sort: 'date_asc', limit: '50', offset: String(offset) })
     const page = z.object({ results: z.array(z.unknown()), paging: z.object({ total: z.number().int().nonnegative() }) }).parse(await get(`/orders/search?${params}`))
     if (expected !== null && expected !== page.paging.total) throw new SyncError(409, 'Os pedidos mudaram durante a consulta. Sincronize novamente.')
     expected = page.paging.total
@@ -135,7 +172,13 @@ export async function syncAccount(db: PrismaClient, accountId: string, request: 
         if (shipment.cost === 0 || (shipment.orderIds.length === 1 && shipment.orderIds[0] === order.id)) shipping = shipment.cost
       } else if (order.tags?.includes('no_shipping') || order.status === 'cancelled') shipping = 0
       const snapshot = normalizeOrder(order, account.externalId, shipping, shipmentStatus)
-      if (!snapshot.financials || !snapshot.financials.refundsKnown) incomplete++
+      try {
+        snapshot.financials.returns = await readReturns(get, order.id, account.externalId)
+        snapshot.financials.returnsKnown = true
+      } catch (error) {
+        if (error instanceof SyncError && error.reconnect) throw error
+      }
+      if (!snapshot.shippingKnown || !snapshot.financials.refundsKnown || !snapshot.financials.returnsKnown) incomplete++
       normalized.push(snapshot)
     }
     const completedAt = new Date()

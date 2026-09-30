@@ -28,6 +28,8 @@ export interface Account {
   name: string
   status: AccountStatus
   lastSync: Date | null
+  syncFrom?: Date | null
+  syncTo?: Date | null
   errorMsg?: string
 }
 
@@ -46,7 +48,11 @@ export interface Order {
   status: OrderStatus
   items: OrderItem[]
   shipping: number
+  shippingKnown?: boolean
   financials?: {
+    productsTotal?: number
+    refundsKnown?: boolean
+    returnsKnown?: boolean
     paymentConfirmed: boolean
     discount: number
     refunds: { id: string; amount: number; status: 'pending' | 'confirmed'; date: Date }[]

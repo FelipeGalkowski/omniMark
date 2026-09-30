@@ -10,6 +10,15 @@ beforeEach(() => vi.stubGlobal('ResizeObserver', class { observe() {} unobserve(
 const text = (label: string) => screen.getByRole('group', { name: label }).textContent?.replace(/\s/g, ' ')
 
 describe('Cards de indicadores', () => {
+  it('mostra zero após sincronização real vazia e período coberto', () => {
+    const now = new Date()
+    const synced = { ...account, lastSync: now, syncFrom: new Date(now.getFullYear() - 1, 0, 1), syncTo: now }
+    render(<AuthContext.Provider value={{ user: { id: 'real', name: 'Pessoa', email: 'test@example.invalid', isDemoUser: false }, updateUser: async () => {} }}><Overview dataReady companyId="company" accounts={[synced]} orders={[]} onAccounts={() => {}} /></AuthContext.Provider>)
+    expect(screen.getByText('Nenhuma venda neste período')).toBeTruthy()
+    expect(text('Faturamento de vendas')).toContain('R$ 0')
+    expect(text('Pedidos no faturamento')).toContain('0')
+    expect(text('Ticket médio')).toContain('—')
+  })
   it('mostra venda com frete, reembolso parcial e valor ajustado sem abreviação', () => {
     render(<Overview companyId="company" accounts={[account]} orders={[paid]} onAccounts={() => {}} />)
     expect(text('Faturamento de vendas')).toContain('R$ 220')

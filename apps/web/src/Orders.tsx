@@ -222,9 +222,9 @@ function OrderPanel({ order, accounts, onClose }: { order: Order; accounts: Acco
           </div>
 
           <div style={{ borderTop:"1px solid var(--bd)", paddingTop:12, display:"flex", flexDirection:"column", gap:6 }}>
-            <Row label="Subtotal (produtos)" mono>{formatBRLFull(itemsTotal)}</Row>
-            <Row label="Descontos" mono>{order.financials ? formatBRLFull(order.financials.discount) : '—'}</Row>
-            <Row label="Frete do comprador" mono>{formatBRLFull(order.shipping)}</Row>
+            <Row label={order.financials?.productsTotal !== undefined ? 'Produtos após descontos' : 'Subtotal (produtos)'} mono>{formatBRLFull(order.financials?.productsTotal ?? itemsTotal)}</Row>
+            {order.financials?.productsTotal === undefined && <Row label="Descontos" mono>{order.financials ? formatBRLFull(order.financials.discount) : '—'}</Row>}
+            <Row label="Frete do comprador" mono>{order.shippingKnown === false ? '—' : formatBRLFull(order.shipping)}</Row>
             <div style={{ borderTop:"1px solid var(--bd)", paddingTop:8, marginTop:2, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <span style={{ fontSize:13, fontWeight:700, color:"var(--t1)" }}>Total do pedido</span>
               <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:15, fontWeight:700, color:"var(--t1)" }}>{grand === null ? '—' : formatBRLFull(grand)}</span>

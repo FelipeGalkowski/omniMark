@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { ALL_ORDERS, DEFAULT_COMPANIES, INITIAL_ACCOUNTS, type Account, type Company, type Page } from './data'
+import { ALL_ORDERS, DEFAULT_COMPANIES, INITIAL_ACCOUNTS, type Account, type Company, type Page, type Order } from './data'
 import { ThemeContext, type ThemeMode } from './theme'
 import { AuthContext, type User } from './auth'
 import { loadJSON, saveJSON } from './utils'
-import { api, ApiError, accountFromApi, companyFromApi, companyPayload, createCompany, type AccountRecord, type CompanyRecord, type UserRecord } from './api'
+import { api, ApiError, accountFromApi, orderFromApi, companyFromApi, companyPayload, createCompany, type AccountRecord, type OrderRecord, type CompanyRecord, type UserRecord } from './api'
 import { Spinner, btnSec } from './ui'
 import LoginPage from './LoginPage'
 import SignupPage from './SignupPage'
@@ -26,6 +26,7 @@ export default function App() {
   const [authScreen, setAuthScreen] = useState<'login' | 'signup' | 'forgot'>('login')
   const [companies, setCompanies] = useState<Company[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
+  const [orders, setOrders] = useState<Order[]>([])
   const [accountRequest, setAccountRequest] = useState({ companyId: '', status: 'loading' })
   const [companyId, setCompanyId] = useState('')
   const [page, setPage] = useState<Page>('overview')
@@ -45,7 +46,7 @@ export default function App() {
     oauthStarted.current = true
     setConnectionMessage('Concluindo conexão com o Mercado Livre…')
     api<{ companyId: string }>('/integrations/mercadolivre/complete', { method: 'POST', body: JSON.stringify({ state: oauthState }) })
-      .then(result => { setCompanyId(result.companyId); setPage('accounts'); setReloadKey(key => key + 1); setConnectionMessage('Conta conectada ao Mercado Livre. A importação de pedidos ainda não está disponível.') })
+      .then(result => { setCompanyId(result.companyId); setPage('accounts'); setReloadKey(key => key + 1); setConnectionMessage('Conta conectada ao Mercado Livre. Clique em Atualizar dados para importar seus pedidos.') })
       .catch((failure: Error) => setConnectionMessage(failure.message))
   }, [oauthState, user, loading, companies])
   const isDark = themeMode === 'dark' || (themeMode === 'system' && sysDark)
@@ -89,16 +90,24 @@ export default function App() {
     if (!user || user.isDemoUser || !companyId) return
     const controller = new AbortController()
     const version = ++requestVersion.current
-    setAccounts([]); setError('')
+    setAccounts([]); setOrders([]); setError('')
     setAccountRequest({ companyId, status: 'loading' })
     api<AccountRecord[]>(`/companies/${companyId}/accounts`, { signal: controller.signal })
-      .then(records => { if (version === requestVersion.current) { setAccounts(records.map(record => accountFromApi(record, companyId))); setAccountRequest({ companyId, status: 'ready' }) } })
+      .then(async records => {
+        const result = records.some(record => record.lastSyncAt) ? await api<{ orders: OrderRecord[] }>(`/companies/${companyId}/orders`, { signal: controller.signal }) : { orders: [] }
+        if (version === requestVersion.current) {
+          setAccounts(records.map(record => accountFromApi(record, companyId)))
+          setOrders(result.orders.map(orderFromApi))
+          setAccountRequest({ companyId, status: 'ready' })
+        }
+      })
       .catch((failure: Error) => { if (failure.name !== 'AbortError' && version === requestVersion.current) { setError(failure.message); setAccountRequest({ companyId, status: 'error' }) } })
     return () => { controller.abort(); requestVersion.current++ }
   }, [user?.id, user?.isDemoUser, companyId, reloadKey])
 
   function handleLogin(next: User) {
     requestVersion.current++
+    setOrders([])
     setUser(next); setError(''); setCompanyError(''); setPage('overview')
     setCompanies(next.isDemoUser ? DEFAULT_COMPANIES.map(company => ({ ...company })) : [])
     setAccounts(next.isDemoUser ? INITIAL_ACCOUNTS.map(account => ({ ...account })) : [])
@@ -112,7 +121,7 @@ export default function App() {
       if (!(failure instanceof ApiError && failure.status === 401)) { setError((failure as Error).message); return }
     }
     requestVersion.current++
-    setUser(null); setCompanies([]); setAccounts([]); setCompanyId(''); setLoading(false)
+    setUser(null); setCompanies([]); setAccounts([]); setOrders([]); setCompanyId(''); setLoading(false)
     setError(''); setCompanyError(''); setShowCreate(false); setShowManage(false); setAuthScreen('login'); setPage('overview')
   }
   async function updateUser(updates: { name: string }) {
@@ -151,7 +160,7 @@ export default function App() {
         <main className="app-content">
           {connectionMessage && <div className="app-alert" role="status">{connectionMessage}</div>}
           {error && <div className="app-alert" role="alert">{error} <button style={btnSec} onClick={() => setReloadKey(key => key + 1)}>Tentar novamente</button></div>}
-          {loading ? <Spinner /> : companyError ? <div className="app-alert" role="alert">{companyError} <button style={btnSec} onClick={() => setReloadKey(key => key + 1)}>Tentar novamente</button></div> : page === 'myaccount' ? <MyAccountPage /> : !company ? <OnboardingPage user={user} onCreate={addCompany} /> : page === 'overview' ? <Overview accountsLoading={!demo && (accountRequest.companyId !== company.id || accountRequest.status === 'loading')} accountsError={!demo && accountRequest.companyId === company.id && accountRequest.status === 'error'} key={company.id} companyId={company.id} accounts={accounts} orders={demo ? ALL_ORDERS : []} onAccounts={() => setPage('accounts')} /> : page === 'orders' ? <OrdersPage key={company.id} companyId={company.id} accounts={accounts} orders={demo ? ALL_ORDERS : []} /> : <AccountsPage key={company.id} canEdit={company.canEdit} companyId={company.id} accounts={accounts} setAccounts={setAccounts} />}
+          {loading ? <Spinner /> : companyError ? <div className="app-alert" role="alert">{companyError} <button style={btnSec} onClick={() => setReloadKey(key => key + 1)}>Tentar novamente</button></div> : page === 'myaccount' ? <MyAccountPage /> : !company ? <OnboardingPage user={user} onCreate={addCompany} /> : page === 'overview' ? <Overview dataReady={demo || accounts.some(account => account.companyId === company.id && account.lastSync !== null)} accountsLoading={!demo && (accountRequest.companyId !== company.id || accountRequest.status === 'loading')} accountsError={!demo && accountRequest.companyId === company.id && accountRequest.status === 'error'} key={company.id} companyId={company.id} accounts={accounts} orders={demo ? ALL_ORDERS : orders.filter(order => order.companyId === company.id)} onAccounts={() => setPage('accounts')} /> : page === 'orders' ? <OrdersPage key={company.id} companyId={company.id} accounts={accounts} orders={demo ? ALL_ORDERS : orders.filter(order => order.companyId === company.id)} /> : <AccountsPage key={company.id} canEdit={company.canEdit} companyId={company.id} accounts={accounts} setAccounts={setAccounts} onSynced={() => setReloadKey(key => key + 1)} />}
         </main>
       </div>
       {showCreate && <CreateCompanyModal onClose={() => setShowCreate(false)} onCreate={addCompany} />}

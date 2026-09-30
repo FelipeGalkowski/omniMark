@@ -17,6 +17,26 @@ function mockFetch(handler: (path: string, init?: RequestInit) => { status?: num
 }
 
 describe('Frontend integrado', () => {
+  it('sincroniza a conta real e carrega os pedidos retornados pela API', async () => {
+    let synced = false
+    const fetch = mockFetch((path, init) => {
+      if (path === '/api/auth/me') return { body: { user } }
+      if (path === '/api/companies') return { body: [{ id: 'company-real', name: 'Empresa real', role: 'OWNER' }] }
+      if (path.endsWith('/sync') && init?.method === 'POST') { synced = true; return { body: { orders: 1, incomplete: 0 } } }
+      if (path.endsWith('/accounts')) return { body: [{ id: 'account-real', marketplace: 'MERCADO_LIVRE', label: 'Loja de teste', status: 'CONNECTED', lastSyncAt: synced ? new Date().toISOString() : null }] }
+      if (path.endsWith('/orders')) return { body: { orders: [{ id: '123456', companyId: 'company-real', accountId: 'account-real', marketplace: 'mercadolivre', date: new Date().toISOString(), status: 'paid', items: [{ name: 'Produto importado', qty: 1, unitPrice: 50 }], shipping: 0, shippingKnown: true, financials: { paymentConfirmed: true, discount: 0, productsTotal: 50, refunds: [], returns: [], returnsKnown: false } }] } }
+      throw new Error(`Unexpected request: ${path}`)
+    })
+    render(<Application />)
+    const action = userEvent.setup()
+    await screen.findByText('Aguardando primeira sincronização')
+    await action.click(screen.getByRole('button', { name: 'Contas' }))
+    await action.click(screen.getByRole('button', { name: 'Atualizar dados' }))
+    await waitFor(() => expect(fetch.mock.calls.some(([path]) => path.endsWith('/orders'))).toBe(true))
+    await action.click(screen.getByRole('button', { name: 'Pedidos' }))
+    await screen.findByText('123456')
+    expect(screen.queryByText(/Dados fictícios/)).toBeNull()
+  })
   it('valida o login no servidor, sem aceitar um usuário gravado no armazenamento local', async () => {
     localStorage.setItem('omnimark_users', JSON.stringify([{ ...user }]))
     const fetch = mockFetch(() => ({ status: 401, body: { error: 'Credenciais inválidas' } }))
@@ -60,7 +80,7 @@ describe('Frontend integrado', () => {
     expect(screen.queryByText('TechStore Brasil')).toBeNull()
     expect(screen.queryByText(/Dados fictícios de 2025/)).toBeNull()
     await action.click(screen.getByRole('button', { name: 'Contas' }))
-    await screen.findByText('Conecte sua conta do Mercado Livre.')
+    await screen.findByText(/Atualize os dados para consultar os pedidos/)
     await action.click(screen.getByRole('button', { name: '+ Conectar conta' }))
     await action.click(screen.getByRole('button', { name: 'Mercado Livre' }))
     await screen.findByText('Autorizar Mercado Livre')
@@ -97,7 +117,7 @@ describe('Frontend integrado', () => {
       return { body: [] }
     })
     render(<Application />)
-    await screen.findByText('Conta conectada ao Mercado Livre. A importação de pedidos ainda não está disponível.')
+    await screen.findByText('Conta conectada ao Mercado Livre. Clique em Atualizar dados para importar seus pedidos.')
     expect(window.location.hash).toBe('')
     await screen.findByText('Contas e Integrações')
     expect(fetch.mock.calls.filter(([path]) => path.endsWith('/complete'))).toHaveLength(1)

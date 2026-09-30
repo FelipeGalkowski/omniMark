@@ -46,6 +46,8 @@ A suíte cobre componentes e OAuth. `check-local.mjs` exige os serviços ativos,
 - Sessões por cookie HttpOnly e senhas protegidas com Argon2.
 - Empresas com acesso por vínculo e papel.
 - OAuth do Mercado Livre com PKCE e tokens criptografados no servidor.
+- Importação manual de pedidos do Mercado Livre em Contas → Atualizar dados, com renovação de tokens, paginação, envios, reembolsos e consulta de devoluções.
+- Pedidos e indicadores alimentados pelos registros importados, com identificação de dados indisponíveis e cobertura do período.
 - Demonstração isolada com dados fictícios.
 
 ## Hospedagem
@@ -70,6 +72,10 @@ Use `develop` na homologação e `main` em produção. O workflow `Checks` valid
 
 A auditoria de dependências ainda aponta avisos na cadeia Prisma/deepmerge-ts e nas ferramentas de testes. A atualização dessas cadeias e a validação correspondente permanecem pendentes antes da liberação de produção.
 
-A importação de pedidos possui implementação inicial na API, com renovação de tokens durante a sincronização, mas ainda depende de integração com a interface e validação com dados reais. Notificações, recuperação de senha por e-mail e implantação em nuvem ainda não estão disponíveis.
+A importação consulta até 12 meses e 10 mil pedidos por conta, sem publicar uma lista parcial caso a paginação falhe. Os pedidos são atualizados por conta e identificador externo; uma falha de consulta preserva a sincronização anterior. Frete compartilhado sem conciliação, reembolsos ausentes e devoluções com estado não reconhecido aparecem como indisponíveis. O faturamento inclui o frete cobrado do comprador e não representa lucro ou saldo a receber.
+
+A sincronização ainda é manual e mantém a requisição aberta durante o processamento (até dez minutos), portanto grandes históricos podem ultrapassar o timeout do proxy. Processamento em fila, notificações automáticas e recuperação de senha por e-mail permanecem pendentes. A validação ponta a ponta com pedidos da conta conectada também está pendente.
+
+Para validar em homologação, conecte um vendedor de teste do Mercado Livre e realize compras com outro usuário de teste. Confira os IDs, totais, cancelamentos e reembolsos entre o Mercado Livre e o painel; repita a atualização para verificar que não há duplicação. Uma conta sem pedidos deve produzir uma lista vazia, sem carregar os dados fictícios da demonstração. Consulte a [documentação de testes do Mercado Livre](https://developers.mercadolivre.com.br/pt_br/realizacao-de-testes/realizacao-de-testes).
 
 A implantação pública exige HTTPS, segredos próprios, backups e revisão de segurança. Não reutilize as credenciais locais do banco em produção. Há pendências de atualização das ferramentas de desenvolvimento e revisão visual.

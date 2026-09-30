@@ -72,9 +72,14 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
   const previous = selectOrders(orders, { ...selection, from: bounds.previousStart, until: bounds.previousEnd })
   const summary = summarizeOrders(filtered)
   const prev = summarizeOrders(previous)
-  const ready = (dataReady ?? user.isDemoUser) && summary.complete
+  const loaded = dataReady ?? user.isDemoUser
+  const selectedAccounts = companyAccounts.filter(account => effectiveAccounts.includes(account.id) && effectiveMarkets.includes(account.marketplace))
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const covered = (from: Date, end: Date) => user.isDemoUser || (selectedAccounts.length > 0 && selectedAccounts.every(account => account.syncFrom && account.syncTo && account.syncFrom <= from && account.syncTo >= new Date(Math.min(end.getTime(), today.getTime()))))
+  const coverageReady = covered(bounds.start, bounds.end)
+  const ready = loaded && coverageReady && summary.complete
   const money = (value: number | null) => ready && value !== null ? formatBRL(value) : '—'
-  const comparisonReady = ready && prev.complete
+  const comparisonReady = ready && prev.complete && covered(bounds.previousStart, bounds.previousEnd)
   function growth(cur: number | null, before: number | null): string | null {
     const change = comparisonReady ? percentageChange(cur, before) : null
     return change === null ? null : formatGrowth(change)
@@ -116,7 +121,7 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
     }))
   , [filtered])
 
-  const problemAccounts = companyAccounts.filter(a => a.status === "error" || a.status === "reconnect_needed")
+  const problemAccounts = companyAccounts.filter(a => a.errorMsg || a.status === "error" || a.status === "reconnect_needed")
   const lastSync = companyAccounts.reduce<Date | null>((best, a) => a.lastSync && (!best || a.lastSync > best) ? a.lastSync : best, null)
 
   const hasData = filtered.length > 0
@@ -130,7 +135,7 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
   const connected = companyAccounts.some(a => a.status === 'connected' || a.status === 'syncing')
   const hasHistory = companyAccounts.some(a => a.lastSync !== null) || orders.some(o => o.companyId === companyId && allAccountIds.includes(o.accountId))
   if (!connected && !hasHistory) return <div className="page-body"><EmptyState icon="🔌" title={companyAccounts.some(a => a.status === 'error' || a.status === 'reconnect_needed') ? 'Revise suas integrações' : 'Sua visão geral começa aqui'} desc="Conecte uma conta de marketplace para acompanhar as vendas desta empresa." action={<button onClick={onAccounts} style={btnPri}>Conectar conta</button>} /></div>
-  if (!ready) return <div className="page-body"><EmptyState icon="⌛" title={hasHistory ? 'Dados de vendas indisponíveis' : 'Aguardando primeira sincronização'} desc={hasHistory ? 'Os dados necessários aos indicadores ainda não estão disponíveis. Confira a situação das contas.' : 'Sua conta está conectada. Os indicadores aparecerão após a importação dos pedidos e reembolsos. A importação ainda não está disponível.'} action={<button onClick={onAccounts} style={btnSec}>Ver contas e integrações</button>} /></div>
+  if (!loaded) return <div className="page-body"><EmptyState icon="⌛" title={hasHistory ? 'Dados de vendas indisponíveis' : 'Aguardando primeira sincronização'} desc={hasHistory ? 'Os dados necessários aos indicadores ainda não estão disponíveis. Confira a situação das contas.' : 'Sua conta está conectada. Em Contas, clique em Atualizar dados para importar os pedidos.'} action={<button onClick={onAccounts} style={btnSec}>Ver contas e integrações</button>} /></div>
 
   return (
     <div className="page-body" style={{ padding:"24px 28px", display:"flex", flexDirection:"column", gap:20 }}>
@@ -157,12 +162,14 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
         <button onClick={clearFilters} style={{ ...btnSec, fontSize:12, padding:"5px 12px" }}>Limpar filtros</button>
       </div>
 
-      {!hasData && (
+      {!coverageReady && <div className="app-alert" role="status">O período selecionado não está totalmente coberto pela sincronização das contas. Os indicadores ficam indisponíveis até consultar esse período.</div>}
+      {coverageReady && !summary.complete && <div className="app-alert" role="status">Há pedidos com valores financeiros indisponíveis. Consulte os detalhes em Pedidos; os totais não serão estimados.</div>}
+      {!hasData && coverageReady && (
         <>
           <EmptyState icon="🔍" title="Nenhuma venda neste período" desc="Os filtros selecionados não retornaram pedidos. Ajuste o período, os canais ou as contas." action={<button onClick={clearFilters} style={btnPri}>Limpar filtros</button>} />
         </>
       )}
-      {hasData &&
+      {(hasData || !user.isDemoUser) &&
         <>
           <div>
             <SectionLabel>Resultado por canal</SectionLabel>
@@ -244,8 +251,8 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
           </div>
 
           <div className="kpi-events">
-            <SecondaryIndicator label="Cancelamentos" count={ready ? summary.cancelled : null} note={ready ? `${formatBRLFull(summary.cancelledValue ?? 0)} em pedidos cancelados. Reembolsos contabilizados separadamente.` : 'Aguardando sincronização'} color="#EF4444" bg="#FEE2E2" textColor="#991B1B" icon="✕" />
-            <SecondaryIndicator label="Devoluções" count={ready ? summary.returns : null} note={ready ? `${summary.returnsPending} em andamento · ${summary.returnsCompleted} concluídas. Contagem por pedido; um pedido pode ter etapas distintas por item.` : 'Aguardando sincronização'} color="#F97316" bg="#FFEDD5" textColor="#9A3412" icon="↩" />
+            <SecondaryIndicator label="Cancelamentos" count={ready ? summary.cancelled : null} note={ready ? `${summary.cancelledValue === null ? 'Valor indisponível' : formatBRLFull(summary.cancelledValue)} em pedidos cancelados. Reembolsos contabilizados separadamente.` : 'Aguardando sincronização'} color="#EF4444" bg="#FEE2E2" textColor="#991B1B" icon="✕" />
+            <SecondaryIndicator label="Devoluções" count={ready ? summary.returns : null} note={ready && summary.returns !== null ? `${summary.returnsPending} em andamento · ${summary.returnsCompleted} concluídas. Contagem por pedido; um pedido pode ter etapas distintas por item.` : 'Aguardando sincronização'} color="#F97316" bg="#FFEDD5" textColor="#9A3412" icon="↩" />
             <SecondaryIndicator label="Pedidos reembolsados" count={ready ? summary.refundOrders : null} note="Inclui reembolsos totais e parciais confirmados, com ou sem devolução." color="#6366F1" bg="#E0E7FF" textColor="#4338CA" icon="↙" />
           </div>
 
