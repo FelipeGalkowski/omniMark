@@ -59,9 +59,16 @@ describe('Importação de pedidos', () => {
   })
   it('inclui cancelados na consulta e percorre todas as páginas', async () => {
     const get = vi.fn().mockResolvedValueOnce({ results: [raw()], paging: { total: 2 } }).mockResolvedValueOnce({ results: [raw(2)], paging: { total: 2 } })
-    expect(await readAllOrders(get, seller, new Date('2026-01-01'), new Date('2026-10-01'))).toHaveLength(2)
-    expect(get.mock.calls[0][0]).toContain('cancelled')
+      .mockResolvedValueOnce({ results: [{ ...raw(2), status: 'cancelled' }], paging: { total: 2 } })
+      .mockResolvedValueOnce({ results: [{ ...raw(3), status: 'cancelled' }], paging: { total: 2 } })
+    const result = await readAllOrders(get, seller, new Date('2026-01-01'), new Date('2026-10-01'))
+    expect(result).toHaveLength(3)
+    expect(result.find(order => order.id === '2')?.status).toBe('cancelled')
+    expect(new URL(get.mock.calls[0][0], 'https://api.mercadolibre.com').searchParams.has('order.status')).toBe(false)
     expect(get.mock.calls[1][0]).toContain('offset=1')
+    expect(get.mock.calls[2][0]).toContain('order.status=cancelled')
+    expect(get.mock.calls[2][0]).toContain('offset=0')
+    expect(get.mock.calls[3][0]).toContain('offset=1')
   })
   it('envia o formato documentado de datas e ordenação à busca de pedidos', async () => {
     const get = vi.fn(async (path: string) => {
@@ -69,22 +76,24 @@ describe('Importação de pedidos', () => {
       expect(params.get('order.date_created.from')).toBe('2026-01-01T00:00:00.000-00:00')
       expect(params.get('order.date_created.to')).toBe('2026-10-01T00:00:00.000-00:00')
       expect(params.get('sort')).toBe('date_desc')
-      expect(params.get('order.status')?.split(',')).toContain('cancelled')
+      expect([null, 'cancelled']).toContain(params.get('order.status'))
       return { results: [], paging: { total: 0 } }
     })
     expect(await readAllOrders(get, seller, new Date('2026-01-01'), new Date('2026-10-01'))).toEqual([])
   })
-  it('evita o filtro pending_cancel rejeitado pelo fornecedor e preserva cancelados', async () => {
+  it('não filtra por estados rejeitados, mas aceita esses estados nos pedidos retornados', async () => {
     vi.stubEnv('TOKEN_ENCRYPTION_KEY', key)
     const db = database()
     const request = vi.fn(async (input: string | URL | Request) => {
-      const filters = new URL(String(input)).searchParams.get('order.status')?.split(',') ?? []
-      if (filters.includes('pending_cancel')) return new Response(JSON.stringify({ error: 'bad_request', message: 'Invalid filters: [pending_cancel]' }), { status: 400 })
-      expect(filters).toContain('cancelled')
-      expect(filters).toContain('partially_refunded')
-      return new Response(JSON.stringify({ results: [], paging: { total: 0 } }))
+      const url = new URL(String(input))
+      if (url.pathname.includes('/claims/')) return new Response(JSON.stringify({ data: [], paging: { total: 0 } }))
+      const status = url.searchParams.get('order.status')
+      if (status && status !== 'cancelled') return new Response(JSON.stringify({ error: 'bad_request', message: `Invalid filters: [${status}]` }), { status: 400 })
+      const results = status === 'cancelled' ? [{ ...raw(3), status: 'cancelled' }] : [{ ...raw(), status: 'partially_refunded' }, { ...raw(2), status: 'pending_cancel' }]
+      return new Response(JSON.stringify({ results, paging: { total: results.length } }))
     })
-    expect(await syncAccount(db, accountId, request)).toMatchObject({ orders: 0 })
+    expect(await syncAccount(db, accountId, request)).toMatchObject({ orders: 3 })
+    expect(db.order.upsert).toHaveBeenCalledTimes(3)
     expect(db.$transaction).toHaveBeenCalledOnce()
   })
   it('identifica filtro de data rejeitado sem expor a resposta privada do fornecedor', async () => {
@@ -104,6 +113,15 @@ describe('Importação de pedidos', () => {
       await expect(readAllOrders(get, seller, new Date('2026-01-01'), new Date('2026-10-01'))).rejects.toThrow()
     }
   })
+  it('não publica resultados parciais quando a consulta de cancelados falha', async () => {
+    vi.stubEnv('TOKEN_ENCRYPTION_KEY', key)
+    const db = database()
+    const request = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ results: [raw()], paging: { total: 1 } })))
+      .mockResolvedValueOnce(new Response('{}', { status: 400 }))
+    await expect(syncAccount(db, accountId, request)).rejects.toThrow('HTTP 400')
+    expect(db.$transaction).not.toHaveBeenCalled()
+    expect(db.order.upsert).not.toHaveBeenCalled()
+  })
   it('persiste pedidos somente após leitura completa e libera a reserva', async () => {
     vi.stubEnv('TOKEN_ENCRYPTION_KEY', key)
     const db = database()
@@ -117,6 +135,7 @@ describe('Importação de pedidos', () => {
     const db = database(true)
     const request = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'new', refresh_token: 'rotated', expires_in: 21600, user_id: 42 })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ results: [], paging: { total: 0 } })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ results: [], paging: { total: 0 } })))
     expect(await syncAccount(db, accountId, request)).toMatchObject({ orders: 0 })
     const cipher = db.marketplaceCredential.updateMany.mock.calls[0][0].data.tokenCipher

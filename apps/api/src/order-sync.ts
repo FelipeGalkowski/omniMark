@@ -100,26 +100,32 @@ export async function readReturns(get: (path: string) => Promise<unknown>, order
 
 export async function readAllOrders(get: (path: string) => Promise<unknown>, sellerId: string, from: Date, to: Date) {
   const records = new Map<string, RemoteOrder>()
-  let offset = 0
-  let expected: number | null = null
-  while (true) {
-    // Orders search documents a numeric UTC offset and date_desc as an explicit sort.
-    // pending_cancel is an order state, but orders/search rejects it as a filter.
-    const params = new URLSearchParams({ seller: sellerId, 'order.status': 'confirmed,payment_required,payment_in_process,partially_paid,paid,partially_refunded,cancelled,invalid', 'order.date_created.from': from.toISOString().replace('Z', '-00:00'), 'order.date_created.to': to.toISOString().replace('Z', '-00:00'), sort: 'date_desc', limit: '50', offset: String(offset) })
-    const page = z.object({ results: z.array(z.unknown()), paging: z.object({ total: z.number().int().nonnegative() }) }).parse(await get(`/orders/search?${params}`))
-    if (expected !== null && expected !== page.paging.total) throw new SyncError(409, 'Os pedidos mudaram durante a consulta. Sincronize novamente.')
-    expected = page.paging.total
-    if (expected > 10000) throw new SyncError(422, 'O volume excede o limite desta sincronização. É necessário importar por intervalos menores.')
-    for (const raw of page.results) {
-      const order = orderSchema.parse(raw)
-      if (order.seller.id !== sellerId) throw new SyncError(502, 'Pedido incompatível com a conta consultada.')
-      records.set(order.id, order)
+  // Seller search omits cancellations by default. Fetch them separately rather
+  // than treating every returned order state as a supported search filter.
+  for (const status of [null, 'cancelled']) {
+    const seen = new Set<string>()
+    let offset = 0
+    let expected: number | null = null
+    while (true) {
+      const params = new URLSearchParams({ seller: sellerId, 'order.date_created.from': from.toISOString().replace('Z', '-00:00'), 'order.date_created.to': to.toISOString().replace('Z', '-00:00'), sort: 'date_desc', limit: '50', offset: String(offset) })
+      if (status) params.set('order.status', status)
+      const page = z.object({ results: z.array(z.unknown()), paging: z.object({ total: z.number().int().nonnegative() }) }).parse(await get(`/orders/search?${params}`))
+      if (expected !== null && expected !== page.paging.total) throw new SyncError(409, 'Os pedidos mudaram durante a consulta. Sincronize novamente.')
+      expected = page.paging.total
+      if (expected > 10000) throw new SyncError(422, 'O volume excede o limite desta sincronização. É necessário importar por intervalos menores.')
+      for (const raw of page.results) {
+        const order = orderSchema.parse(raw)
+        if (order.seller.id !== sellerId) throw new SyncError(502, 'Pedido incompatível com a conta consultada.')
+        seen.add(order.id)
+        records.set(order.id, order)
+      }
+      if (records.size > 10000) throw new SyncError(422, 'O volume excede o limite desta sincronização. É necessário importar por intervalos menores.')
+      offset += page.results.length
+      if (offset >= expected) break
+      if (!page.results.length) throw new SyncError(502, 'A API interrompeu a paginação. Nenhum resultado parcial foi publicado.')
     }
-    offset += page.results.length
-    if (offset >= expected) break
-    if (!page.results.length) throw new SyncError(502, 'A API interrompeu a paginação. Nenhum resultado parcial foi publicado.')
+    if (seen.size !== expected) throw new SyncError(409, 'Paginação inconsistente. Sincronize novamente.')
   }
-  if (records.size !== expected) throw new SyncError(409, 'Paginação inconsistente. Sincronize novamente.')
   return [...records.values()]
 }
 
