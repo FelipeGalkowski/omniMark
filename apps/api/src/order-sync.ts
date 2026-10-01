@@ -17,7 +17,27 @@ const orderSchema = z.object({
 type RemoteOrder = z.infer<typeof orderSchema>
 type OrderReturn = { id: string; status: 'requested' | 'in_progress' | 'completed' | 'cancelled' }
 export class SyncError extends Error {
-  constructor(public code: number, message: string, public reconnect = false) { super(message) }
+  constructor(public code: number, message: string, public reconnect = false, public diagnostic?: { reference: string; operation: string; providerStatus: number; detail: string }) { super(message) }
+}
+
+export function providerFailureDetail(payload: unknown, secrets: string[]): string {
+  const body = z.object({ error: z.unknown().optional(), message: z.unknown().optional(), cause: z.unknown().optional() }).safeParse(payload)
+  if (!body.success) return 'Resposta sem detalhe de erro legível.'
+  const fields: string[] = []
+  const collect = (value: unknown) => { if (typeof value === 'string') fields.push(value) }
+  collect(body.data.error); collect(body.data.message)
+  if (Array.isArray(body.data.cause)) for (const cause of body.data.cause.slice(0, 3)) {
+    if (typeof cause === 'string') collect(cause)
+    else if (cause && typeof cause === 'object') { collect(cause.code); collect(cause.message) }
+  }
+  let detail = fields.join(' | ')
+  for (const secret of secrets.filter(Boolean).sort((a, b) => b.length - a.length)) detail = detail.split(secret).join('[redacted]')
+  return detail
+    .replace(/https?:\/\/\S+/gi, '[url]')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+    .replace(/\b(?:APP_USR|TEST)-[^\s,;"']+/g, '[token]')
+    .replace(/\b\d{6,}\b/g, '[id]')
+    .replace(/[\r\n\t]/g, ' ').slice(0, 600) || 'Resposta sem detalhe de erro legível.'
 }
 
 export function normalizeOrder(raw: unknown, sellerId: string, shipping: number | null, shipmentStatus?: string) {
@@ -146,7 +166,9 @@ export async function syncAccount(db: PrismaClient, accountId: string, request: 
             // Classify errors without returning provider payloads, IDs or credentials.
             const description = JSON.stringify(failure ?? {}).toLowerCase()
             const field = /date|fecha/.test(description) ? 'período' : /sort/.test(description) ? 'ordenação' : /status/.test(String(failure?.message ?? '').toLowerCase()) ? 'situação do pedido' : /seller|caller/.test(description) ? 'identificação do vendedor' : /offset|limit/.test(description) ? 'paginação' : null
-            throw new SyncError(502, `O Mercado Livre rejeitou a consulta de pedidos (HTTP 400)${field ? `: parâmetro de ${field} inválido` : ''}. Informe este erro ao suporte.`)
+            const reference = randomUUID()
+            const diagnostic = { reference, operation: 'orders.search', providerStatus: response.status, detail: providerFailureDetail(failure, [tokens.accessToken, tokens.refreshToken, process.env.SECRET_KEY_ML ?? '', process.env.TOKEN_ENCRYPTION_KEY ?? '']) }
+            throw new SyncError(502, `O Mercado Livre rejeitou a consulta de pedidos (HTTP 400)${field ? `: parâmetro de ${field} inválido` : ''}. Referência: ${reference}.`, false, diagnostic)
           }
           throw new SyncError(response.status === 401 ? 409 : 502, response.status === 403 ? 'O Mercado Livre recusou acesso aos pedidos ou envios. Revise as permissões da aplicação.' : `Consulta ao Mercado Livre falhou (HTTP ${response.status}). Tente novamente.`, response.status === 401)
         }
@@ -234,6 +256,12 @@ export function registerOrderSync(app: FastifyInstance, db: PrismaClient, authen
     const account = await db.marketplaceAccount.findFirst({ where: { id: accountId, companyId: id, marketplace: 'MERCADO_LIVRE' } })
     if (!account) return reply.code(404).send({ error: 'Conta não encontrada.' })
     try { return await syncAccount(db, accountId) }
-    catch (error) { if (error instanceof SyncError) return reply.code(error.code).send({ error: error.message }); throw error }
+    catch (error) {
+      if (error instanceof SyncError) {
+        if (error.diagnostic) req.log.warn({ mercadoLivre: error.diagnostic }, 'ML_REQUEST_FAILED')
+        return reply.code(error.code).send({ error: error.message })
+      }
+      throw error
+    }
   })
 }

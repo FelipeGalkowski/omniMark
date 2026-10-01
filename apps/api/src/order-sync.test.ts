@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Fastify from 'fastify'
-import { normalizeOrder, readAllOrders, readReturns, registerOrderSync, syncAccount } from './order-sync.js'
+import { normalizeOrder, providerFailureDetail, readAllOrders, readReturns, registerOrderSync, syncAccount } from './order-sync.js'
 import { vault } from './mercadolivre.js'
 
 const seller = '42'
@@ -24,6 +24,12 @@ function database(expired = false) {
 afterEach(() => vi.unstubAllEnvs())
 
 describe('Importação de pedidos', () => {
+  it('registra o motivo do fornecedor sem tokens, dados extras ou identificadores', () => {
+    const detail = providerFailureDetail({ error: 'bad_request', message: 'Invalid filter access-secret for 123456789 user@example.test', cause: [{ code: 'unsupported_filter', message: 'refresh-secret' }], private_data: 'never-log-this' }, ['access-secret', 'refresh-secret'])
+    expect(detail).toContain('Invalid filter')
+    expect(detail).toContain('unsupported_filter')
+    for (const secret of ['access-secret', 'refresh-secret', '123456789', 'user@example.test', 'never-log-this']) expect(detail).not.toContain(secret)
+  })
   it('consulta devoluções e deduplica o mesmo retorno em reclamações distintas', async () => {
     const claim = (id: number) => ({ id, type: 'return', related_entities: ['return'], players: [{ type: 'seller', user_id: 42 }] })
     const get = vi.fn().mockResolvedValueOnce({ paging: { total: 2 }, data: [claim(1), claim(2)] })
