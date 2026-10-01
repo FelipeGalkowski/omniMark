@@ -74,6 +74,19 @@ describe('Importação de pedidos', () => {
     })
     expect(await readAllOrders(get, seller, new Date('2026-01-01'), new Date('2026-10-01'))).toEqual([])
   })
+  it('evita o filtro pending_cancel rejeitado pelo fornecedor e preserva cancelados', async () => {
+    vi.stubEnv('TOKEN_ENCRYPTION_KEY', key)
+    const db = database()
+    const request = vi.fn(async (input: string | URL | Request) => {
+      const filters = new URL(String(input)).searchParams.get('order.status')?.split(',') ?? []
+      if (filters.includes('pending_cancel')) return new Response(JSON.stringify({ error: 'bad_request', message: 'Invalid filters: [pending_cancel]' }), { status: 400 })
+      expect(filters).toContain('cancelled')
+      expect(filters).toContain('partially_refunded')
+      return new Response(JSON.stringify({ results: [], paging: { total: 0 } }))
+    })
+    expect(await syncAccount(db, accountId, request)).toMatchObject({ orders: 0 })
+    expect(db.$transaction).toHaveBeenCalledOnce()
+  })
   it('identifica filtro de data rejeitado sem expor a resposta privada do fornecedor', async () => {
     vi.stubEnv('TOKEN_ENCRYPTION_KEY', key)
     const db = database()

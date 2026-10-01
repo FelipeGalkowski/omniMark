@@ -104,7 +104,8 @@ export async function readAllOrders(get: (path: string) => Promise<unknown>, sel
   let expected: number | null = null
   while (true) {
     // Orders search documents a numeric UTC offset and date_desc as an explicit sort.
-    const params = new URLSearchParams({ seller: sellerId, 'order.status': 'confirmed,payment_required,payment_in_process,partially_paid,paid,partially_refunded,pending_cancel,cancelled,invalid', 'order.date_created.from': from.toISOString().replace('Z', '-00:00'), 'order.date_created.to': to.toISOString().replace('Z', '-00:00'), sort: 'date_desc', limit: '50', offset: String(offset) })
+    // pending_cancel is an order state, but orders/search rejects it as a filter.
+    const params = new URLSearchParams({ seller: sellerId, 'order.status': 'confirmed,payment_required,payment_in_process,partially_paid,paid,partially_refunded,cancelled,invalid', 'order.date_created.from': from.toISOString().replace('Z', '-00:00'), 'order.date_created.to': to.toISOString().replace('Z', '-00:00'), sort: 'date_desc', limit: '50', offset: String(offset) })
     const page = z.object({ results: z.array(z.unknown()), paging: z.object({ total: z.number().int().nonnegative() }) }).parse(await get(`/orders/search?${params}`))
     if (expected !== null && expected !== page.paging.total) throw new SyncError(409, 'Os pedidos mudaram durante a consulta. Sincronize novamente.')
     expected = page.paging.total
