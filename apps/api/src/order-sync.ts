@@ -83,7 +83,8 @@ export async function readAllOrders(get: (path: string) => Promise<unknown>, sel
   let offset = 0
   let expected: number | null = null
   while (true) {
-    const params = new URLSearchParams({ seller: sellerId, 'order.status': 'confirmed,payment_required,payment_in_process,partially_paid,paid,partially_refunded,pending_cancel,cancelled,invalid', 'order.date_created.from': from.toISOString(), 'order.date_created.to': to.toISOString(), sort: 'date_asc', limit: '50', offset: String(offset) })
+    // Orders search documents a numeric UTC offset and date_desc as an explicit sort.
+    const params = new URLSearchParams({ seller: sellerId, 'order.status': 'confirmed,payment_required,payment_in_process,partially_paid,paid,partially_refunded,pending_cancel,cancelled,invalid', 'order.date_created.from': from.toISOString().replace('Z', '-00:00'), 'order.date_created.to': to.toISOString().replace('Z', '-00:00'), sort: 'date_desc', limit: '50', offset: String(offset) })
     const page = z.object({ results: z.array(z.unknown()), paging: z.object({ total: z.number().int().nonnegative() }) }).parse(await get(`/orders/search?${params}`))
     if (expected !== null && expected !== page.paging.total) throw new SyncError(409, 'Os pedidos mudaram durante a consulta. Sincronize novamente.')
     expected = page.paging.total
@@ -133,10 +134,22 @@ export async function syncAccount(db: PrismaClient, accountId: string, request: 
       let refreshed = false
       for (let attempt = 0; attempt < 3; attempt++) {
         if (Date.now() > deadline) throw new SyncError(504, 'A sincronização excedeu o tempo limite. Tente novamente.')
-        const response = await request(`https://api.mercadolibre.com${path}`, { headers: { Authorization: `Bearer ${tokens.accessToken}`, 'x-format-new': 'true', 'X-New-Domain': 'true' }, signal: AbortSignal.timeout(20000) })
+        const headers: Record<string, string> = { Authorization: `Bearer ${tokens.accessToken}` }
+        if (path.startsWith('/shipments/')) headers['x-format-new'] = 'true'
+        if (/^\/shipments\/\d+\/orders$/.test(path)) headers['X-New-Domain'] = 'true'
+        const response = await request(`https://api.mercadolibre.com${path}`, { headers, signal: AbortSignal.timeout(20000) })
         if (response.status === 401 && !refreshed) { await refresh(); refreshed = true; continue }
         if ((response.status === 429 || response.status >= 500) && attempt < 2) { await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1))); continue }
-        if (!response.ok) throw new SyncError(response.status === 401 ? 409 : 502, response.status === 403 ? 'O Mercado Livre recusou acesso aos pedidos ou envios. Revise as permissões da aplicação.' : `Consulta ao Mercado Livre falhou (HTTP ${response.status}). Tente novamente.`, response.status === 401)
+        if (!response.ok) {
+          if (response.status === 400 && path.startsWith('/orders/search?')) {
+            const failure = await response.json().catch(() => null)
+            // Classify errors without returning provider payloads, IDs or credentials.
+            const description = JSON.stringify(failure ?? {}).toLowerCase()
+            const field = /date|fecha/.test(description) ? 'período' : /sort/.test(description) ? 'ordenação' : /status/.test(String(failure?.message ?? '').toLowerCase()) ? 'situação do pedido' : /seller|caller/.test(description) ? 'identificação do vendedor' : /offset|limit/.test(description) ? 'paginação' : null
+            throw new SyncError(502, `O Mercado Livre rejeitou a consulta de pedidos (HTTP 400)${field ? `: parâmetro de ${field} inválido` : ''}. Informe este erro ao suporte.`)
+          }
+          throw new SyncError(response.status === 401 ? 409 : 502, response.status === 403 ? 'O Mercado Livre recusou acesso aos pedidos ou envios. Revise as permissões da aplicação.' : `Consulta ao Mercado Livre falhou (HTTP ${response.status}). Tente novamente.`, response.status === 401)
+        }
         return response.json()
       }
       throw new SyncError(502, 'Não foi possível concluir a consulta ao Mercado Livre.')

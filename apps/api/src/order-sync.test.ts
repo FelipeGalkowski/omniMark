@@ -57,6 +57,28 @@ describe('Importação de pedidos', () => {
     expect(get.mock.calls[0][0]).toContain('cancelled')
     expect(get.mock.calls[1][0]).toContain('offset=1')
   })
+  it('envia o formato documentado de datas e ordenação à busca de pedidos', async () => {
+    const get = vi.fn(async (path: string) => {
+      const params = new URL(path, 'https://api.mercadolibre.com').searchParams
+      expect(params.get('order.date_created.from')).toBe('2026-01-01T00:00:00.000-00:00')
+      expect(params.get('order.date_created.to')).toBe('2026-10-01T00:00:00.000-00:00')
+      expect(params.get('sort')).toBe('date_desc')
+      expect(params.get('order.status')?.split(',')).toContain('cancelled')
+      return { results: [], paging: { total: 0 } }
+    })
+    expect(await readAllOrders(get, seller, new Date('2026-01-01'), new Date('2026-10-01'))).toEqual([])
+  })
+  it('identifica filtro de data rejeitado sem expor a resposta privada do fornecedor', async () => {
+    vi.stubEnv('TOKEN_ENCRYPTION_KEY', key)
+    const db = database()
+    const request = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      expect(init?.headers).toEqual({ Authorization: 'Bearer old' })
+      return new Response(JSON.stringify({ error: 'bad_request', message: 'Invalid date_created filter', private_data: 'must-not-leak' }), { status: 400 })
+    })
+    await expect(syncAccount(db, accountId, request)).rejects.toThrow('parâmetro de período inválido')
+    expect(JSON.stringify(db.marketplaceAccount.updateMany.mock.calls)).not.toContain('must-not-leak')
+    expect(db.order.upsert).not.toHaveBeenCalled()
+  })
   it('não publica paginação repetida ou alterada', async () => {
     for (const second of [{ results: [raw()], paging: { total: 2 } }, { results: [], paging: { total: 3 } }]) {
       const get = vi.fn().mockResolvedValueOnce({ results: [raw()], paging: { total: 2 } }).mockResolvedValueOnce(second)
