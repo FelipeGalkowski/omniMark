@@ -71,6 +71,8 @@ body {
 .rdp { background: var(--sf); }
 
 @keyframes spin { to { transform: rotate(360deg) } }
+.icon-spin { animation: spin 1s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .icon-spin { animation: none; } }
 
 :root { color-scheme: light; --t3: #67748A; --t4: #758198; }
 [data-theme="dark"] { color-scheme: dark; --t3: #9AA9C3; --t4: #8594AE; }

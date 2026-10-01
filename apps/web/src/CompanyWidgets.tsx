@@ -1,3 +1,4 @@
+import { Icon, type IconName } from './Icon'
 import { useEffect, useRef, useState } from 'react'
 import { formatCNPJ, validateCNPJ, type Company, type Account } from './data'
 import { type ThemeMode } from './theme'
@@ -41,22 +42,22 @@ export function UserMenu({ user, mode, onSetMode, onAccount, onLogout }: {
           </div>
 
           <MenuBtn onClick={() => { onAccount(); setOpen(false) }}>
-            <span style={{ fontSize:14 }}>👤</span> Minha conta
+            <Icon name="user" /> Minha conta
           </MenuBtn>
 
           <div style={{ padding:"10px 16px", borderTop:"1px solid var(--bd)", borderBottom:"1px solid var(--bd)" }}>
             <div style={{ fontSize:10, fontWeight:700, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:8 }}>Tema</div>
             <div style={{ display:"flex", border:"1.5px solid var(--bd)", borderRadius:8, overflow:"hidden" }}>
-              {([["light","☀","Claro"],["dark","🌙","Escuro"],["system","💻","Sistema"]] as [ThemeMode,string,string][]).map(([m, icon, label], i) => (
-                <button key={m} onClick={() => onSetMode(m)} title={label} style={{ flex:1, padding:"5px 0", border:"none", borderLeft: i>0?"1px solid var(--bd)":"none", background: mode===m ? "var(--t1)" : "transparent", color: mode===m ? "var(--sf)" : "var(--t3)", cursor:"pointer", fontSize:13, lineHeight:1, transition:"background 0.12s" }}>
-                  {icon}
+              {([["light","sun","Claro"],["dark","moon","Escuro"],["system","monitor","Sistema"]] as [ThemeMode,IconName,string][]).map(([m, icon, label], i) => (
+                <button key={m} onClick={() => onSetMode(m)} title={label} aria-label={label} aria-pressed={mode === m} style={{ flex:1, padding:"5px 0", border:"none", borderLeft: i>0?"1px solid var(--bd)":"none", background: mode===m ? "var(--t1)" : "transparent", color: mode===m ? "var(--sf)" : "var(--t3)", cursor:"pointer", fontSize:13, lineHeight:1, transition:"background 0.12s" }}>
+                  <Icon name={icon} />
                 </button>
               ))}
             </div>
           </div>
 
           <MenuBtn onClick={() => { onLogout(); setOpen(false) }} danger>
-            <span style={{ fontSize:14 }}>↩</span> Sair
+            <Icon name="logout" /> Sair
           </MenuBtn>
         </div>
       )}
@@ -93,7 +94,7 @@ export function CompanySelector({ company, companies, accounts, onSwitch, onCrea
   return (
     <div ref={ref} style={{ position:"relative" }}>
       <button onClick={() => setOpen(v => !v)} style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 12px", borderRadius:8, border:"1.5px solid var(--bd)", background:"var(--sf)", fontSize:13, fontWeight:600, color:"var(--t1)", cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>
-        <BuildingIcon />
+        <Icon name="building" />
         <span style={{ maxWidth:160, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{company.name}</span>
         <ChevronIcon open={open} />
       </button>
@@ -110,7 +111,7 @@ export function CompanySelector({ company, companies, accounts, onSwitch, onCrea
                 <div style={{ fontSize:13, fontWeight:600, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{c.name}</div>
                 {c.cnpj && <div style={{ fontSize:11, color:"var(--t3)" }}>{c.cnpj}</div>}
               </div>
-              {c.id === company.id && <span style={{ fontSize:12, color:"var(--t3)" }}>✓</span>}
+              {c.id === company.id && <Icon name="check" style={{ color:"var(--t3)" }} />}
             </button>
           ))}
           <div style={{ borderTop:"1px solid var(--bd)", marginTop:6, paddingTop:6 }}>
@@ -118,7 +119,7 @@ export function CompanySelector({ company, companies, accounts, onSwitch, onCrea
               onMouseEnter={e => e.currentTarget.style.background = "var(--hover)"}
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}
             >
-              <span style={{ fontSize:16, lineHeight:1 }}>+</span> Cadastrar empresa
+              <Icon name="plus" /> Cadastrar empresa
             </button>
             <button onClick={() => { onManageOpen(); setOpen(false) }} style={{ width:"100%", padding:"8px 14px", border:"none", background:"transparent", cursor:"pointer", fontSize:13, fontWeight:500, color:"var(--t2)", textAlign:"left", fontFamily:"'DM Sans',sans-serif" }}
               onMouseEnter={e => e.currentTarget.style.background = "var(--hover)"}
@@ -159,7 +160,7 @@ export function CreateCompanyModal({ onClose, onCreate }: { onClose: () => void;
       <div style={{ padding:"20px 24px 24px" }}>
         {done ? (
           <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:14, padding:"16px 0" }}>
-            <div style={{ width:48, height:48, borderRadius:"50%", background:"#DCFCE7", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>⏳</div>
+            <div style={{ width:48, height:48, borderRadius:"50%", background:"var(--sf3)", display:"flex", alignItems:"center", justifyContent:"center", color:"var(--t3)" }}><Icon name="loader" size={24} className="icon-spin" /></div>
             <div style={{ textAlign:"center" }}>
               <div style={{ fontWeight:700, fontSize:15, color:"var(--t1)" }}>{doneLabel}</div>
               <div style={{ fontSize:13, color:"var(--t3)", marginTop:4 }}>Salvando os dados da empresa…</div>
@@ -219,7 +220,7 @@ export function ManageCompaniesModal({ companies, accounts, onClose, onUpdate, o
                 </div>
               )
             })}
-            <button onClick={onCreateOpen} style={{ ...mBtnPri, alignSelf:"flex-start", marginTop:4 }}>+ Cadastrar empresa</button>
+            <button onClick={onCreateOpen} style={{ ...mBtnPri, alignSelf:"flex-start", marginTop:4 }}><Icon name="plus" /> Cadastrar empresa</button>
           </>
         )}
       </div>
@@ -271,7 +272,7 @@ function EditCompanyForm({ company, onSave, onCancel }: { company: Company; onSa
 export function EmptyNoCompany({ onCreateOpen }: { onCreateOpen: () => void }) {
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100%", padding:"48px 24px", gap:16, textAlign:"center" }}>
-      <span style={{ fontSize:40 }}>🏢</span>
+      <Icon name="building" size={32} style={{ color:"var(--t3)" }} />
       <div>
         <div style={{ fontWeight:700, fontSize:16, color:"var(--t1)", marginBottom:8 }}>Nenhuma empresa cadastrada</div>
         <div style={{ fontSize:13, color:"var(--t3)", maxWidth:340 }}>Cadastre uma empresa para começar a acompanhar suas vendas.</div>
@@ -300,7 +301,7 @@ function ModalHeader({ title, onClose }: { title: string; onClose: () => void })
     <div style={{ padding:"20px 24px 16px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
       <h2 style={{ margin:0, fontSize:16, fontWeight:700, color:"var(--t1)" }}>{title}</h2>
       <button aria-label="Fechar janela" onClick={onClose} style={{ width:28, height:28, borderRadius:7, border:"1.5px solid var(--bd)", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:"var(--t3)" }}>
-        <svg width={10} height={10} viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"/></svg>
+        <Icon name="close" />
       </button>
     </div>
   )
@@ -324,14 +325,3 @@ const mInputStyle = (hasError: boolean): React.CSSProperties => ({
 
 const mBtnPri: React.CSSProperties = { padding:"8px 16px", borderRadius:8, border:"none", background:"var(--pri)", color:"var(--pri-t)", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }
 const mBtnSec: React.CSSProperties = { padding:"8px 16px", borderRadius:8, border:"1.5px solid var(--bd)", background:"transparent", color:"var(--t1)", fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }
-
-function BuildingIcon() {
-  return (
-    <svg width={14} height={14} viewBox="0 0 14 14" fill="none" style={{flexShrink:0}}>
-      <rect x="1" y="3" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth={1.2}/>
-      <path d="M5 13V8h4v5" stroke="currentColor" strokeWidth={1.2}/>
-      <path d="M1 6h12" stroke="currentColor" strokeWidth={1.2}/>
-      <path d="M4 3V1.5a.5.5 0 01.5-.5h5a.5.5 0 01.5.5V3" stroke="currentColor" strokeWidth={1.2}/>
-    </svg>
-  )
-}

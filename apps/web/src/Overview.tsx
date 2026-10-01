@@ -1,3 +1,4 @@
+import { Icon, type IconName } from './Icon'
 import { useState, useMemo } from "react"
 import { useAuth } from "./auth"
 import {
@@ -130,12 +131,12 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
   const axisColor  = isDark ? "#6B7A99" : "#8892A4"
   const ttStyle: React.CSSProperties = { background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:8, fontFamily:"'DM Sans',sans-serif", boxShadow:`0 4px 16px var(--shd)`, color:"var(--t1)" }
 
-  if (accountsLoading) return <div role="status" className="page-body"><EmptyState icon="⌛" title="Carregando contas" desc="Consultando as integrações da empresa." /></div>
-  if (accountsError) return <div className="page-body"><EmptyState icon="⚠" title="Não foi possível consultar as contas" desc="Tente novamente para verificar as integrações desta empresa." /></div>
+  if (accountsLoading) return <div role="status" className="page-body"><EmptyState icon="clock" title="Carregando contas" desc="Consultando as integrações da empresa." /></div>
+  if (accountsError) return <div className="page-body"><EmptyState icon="alert" title="Não foi possível consultar as contas" desc="Tente novamente para verificar as integrações desta empresa." /></div>
   const connected = companyAccounts.some(a => a.status === 'connected' || a.status === 'syncing')
   const hasHistory = companyAccounts.some(a => a.lastSync !== null) || orders.some(o => o.companyId === companyId && allAccountIds.includes(o.accountId))
-  if (!connected && !hasHistory) return <div className="page-body"><EmptyState icon="🔌" title={companyAccounts.some(a => a.status === 'error' || a.status === 'reconnect_needed') ? 'Revise suas integrações' : 'Sua visão geral começa aqui'} desc="Conecte uma conta de marketplace para acompanhar as vendas desta empresa." action={<button onClick={onAccounts} style={btnPri}>Conectar conta</button>} /></div>
-  if (!loaded) return <div className="page-body"><EmptyState icon="⌛" title={hasHistory ? 'Dados de vendas indisponíveis' : 'Aguardando primeira sincronização'} desc={hasHistory ? 'Os dados necessários aos indicadores ainda não estão disponíveis. Confira a situação das contas.' : 'Sua conta está conectada. Em Contas, clique em Atualizar dados para importar os pedidos.'} action={<button onClick={onAccounts} style={btnSec}>Ver contas e integrações</button>} /></div>
+  if (!connected && !hasHistory) return <div className="page-body"><EmptyState icon="plug" title={companyAccounts.some(a => a.status === 'error' || a.status === 'reconnect_needed') ? 'Revise suas integrações' : 'Sua visão geral começa aqui'} desc="Conecte uma conta de marketplace para acompanhar as vendas desta empresa." action={<button onClick={onAccounts} style={btnPri}>Conectar conta</button>} /></div>
+  if (!loaded) return <div className="page-body"><EmptyState icon="clock" title={hasHistory ? 'Dados de vendas indisponíveis' : 'Aguardando primeira sincronização'} desc={hasHistory ? 'Os dados necessários aos indicadores ainda não estão disponíveis. Confira a situação das contas.' : 'Sua conta está conectada. Em Contas, clique em Atualizar dados para importar os pedidos.'} action={<button onClick={onAccounts} style={btnSec}>Ver contas e integrações</button>} /></div>
 
   return (
     <div className="page-body" style={{ padding:"24px 28px", display:"flex", flexDirection:"column", gap:20 }}>
@@ -147,7 +148,7 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
         {problemAccounts.length > 0 && (
           <div style={{ display:"flex", alignItems:"center", gap:8, background:"#FEF3C7", border:"1px solid #FCD34D", borderRadius:8, padding:"6px 12px" }}>
             <span style={{ fontSize:12, color:"#92400E", fontWeight:500 }}>
-              ⚠ {problemAccounts.map(a => a.name).join(", ")} — dados podem estar desatualizados.
+              <Icon name="alert" /> {problemAccounts.map(a => a.name).join(", ")} — dados podem estar desatualizados.
             </span>
           </div>
         )}
@@ -166,7 +167,7 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
       {coverageReady && !summary.complete && <div className="app-alert" role="status">Há pedidos com valores financeiros indisponíveis. Consulte os detalhes em Pedidos; os totais não serão estimados.</div>}
       {!hasData && coverageReady && (
         <>
-          <EmptyState icon="🔍" title="Nenhuma venda neste período" desc="Os filtros selecionados não retornaram pedidos. Ajuste o período, os canais ou as contas." action={<button onClick={clearFilters} style={btnPri}>Limpar filtros</button>} />
+          <EmptyState icon="search" title="Nenhuma venda neste período" desc="Os filtros selecionados não retornaram pedidos. Ajuste o período, os canais ou as contas." action={<button onClick={clearFilters} style={btnPri}>Limpar filtros</button>} />
         </>
       )}
       {(hasData || !user.isDemoUser) &&
@@ -251,9 +252,9 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
           </div>
 
           <div className="kpi-events">
-            <SecondaryIndicator label="Cancelamentos" count={ready ? summary.cancelled : null} note={ready ? `${summary.cancelledValue === null ? 'Valor indisponível' : formatBRLFull(summary.cancelledValue)} em pedidos cancelados. Reembolsos contabilizados separadamente.` : 'Aguardando sincronização'} color="#EF4444" bg="#FEE2E2" textColor="#991B1B" icon="✕" />
-            <SecondaryIndicator label="Devoluções" count={ready ? summary.returns : null} note={ready && summary.returns !== null ? `${summary.returnsPending} em andamento · ${summary.returnsCompleted} concluídas. Contagem por pedido; um pedido pode ter etapas distintas por item.` : 'Aguardando sincronização'} color="#F97316" bg="#FFEDD5" textColor="#9A3412" icon="↩" />
-            <SecondaryIndicator label="Pedidos reembolsados" count={ready ? summary.refundOrders : null} note="Inclui reembolsos totais e parciais confirmados, com ou sem devolução." color="#6366F1" bg="#E0E7FF" textColor="#4338CA" icon="↙" />
+            <SecondaryIndicator label="Cancelamentos" count={ready ? summary.cancelled : null} note={ready ? `${summary.cancelledValue === null ? 'Valor indisponível' : formatBRLFull(summary.cancelledValue)} em pedidos cancelados. Reembolsos contabilizados separadamente.` : 'Aguardando sincronização'} color="#EF4444" bg="#FEE2E2" textColor="#991B1B" icon="close" />
+            <SecondaryIndicator label="Devoluções" count={ready ? summary.returns : null} note={ready && summary.returns !== null ? `${summary.returnsPending} em andamento · ${summary.returnsCompleted} concluídas. Contagem por pedido; um pedido pode ter etapas distintas por item.` : 'Aguardando sincronização'} color="#F97316" bg="#FFEDD5" textColor="#9A3412" icon="return" />
+            <SecondaryIndicator label="Pedidos reembolsados" count={ready ? summary.refundOrders : null} note="Inclui reembolsos totais e parciais confirmados, com ou sem devolução." color="#6366F1" bg="#E0E7FF" textColor="#4338CA" icon="refund" />
           </div>
 
           {ready && hasData && <>
@@ -284,7 +285,7 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
                     ))}
                   </div>
                 </>
-              ) : <EmptyState icon="📊" title="Sem dados" desc="Nenhum pedido no período." />}
+              ) : <EmptyState icon="chart" title="Sem dados" desc="Nenhum pedido no período." />}
             </Card>
 
             <Card title="Evolução mensal de faturamento">
@@ -356,7 +357,7 @@ function AggKpi({ label, tip, value, growth, prevLabel, mono = true, emptyNote, 
           <span style={{ fontSize:11, color:"var(--t3)", fontStyle:"italic", marginBottom:2 }}>{emptyNote}</span>
         ) : growth !== null
           ? <span style={{ fontSize:11, fontWeight:700, padding:"3px 8px", borderRadius:20, background:neutralGrowth?'var(--sf3)':pos?"#DCFCE7":"#FEE2E2", color:neutralGrowth?'var(--t2)':pos?"#16a34a":"#dc2626", fontFamily:"'JetBrains Mono',monospace", whiteSpace:"nowrap", marginBottom:2 }}>
-              {pos?"↑":"↓"} {growth.replace("+","")}
+              <Icon name={pos ? "arrowUp" : "arrowDown"} size={12} /> {growth.replace("+","")}
             </span>
           : <span style={{ fontSize:11, color:"var(--t3)", fontStyle:"italic", marginBottom:2 }}>Sem base de comparação</span>
         }
@@ -367,12 +368,12 @@ function AggKpi({ label, tip, value, growth, prevLabel, mono = true, emptyNote, 
 }
 
 function SecondaryIndicator({ label, count, note, color, bg, textColor, icon }: {
-  label: string; count: number | null; note: string; color: string; bg: string; textColor: string; icon: string
+  label: string; count: number | null; note: string; color: string; bg: string; textColor: string; icon: IconName
 }) {
   return (
     <div role="group" aria-label={label} style={{ background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:14, padding:"16px 18px", display:"flex", flexDirection:"column", gap:8 }}>
       <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-        <span style={{ width:24, height:24, borderRadius:6, background:bg, color, fontSize:12, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700 }}>{icon}</span>
+        <span style={{ width:24, height:24, borderRadius:6, background:bg, color, fontSize:12, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700 }}><Icon name={icon} /></span>
         <span style={{ fontSize:12, fontWeight:600, color:textColor }}>{label}</span>
       </div>
       <div>

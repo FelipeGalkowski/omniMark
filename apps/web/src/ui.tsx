@@ -1,3 +1,4 @@
+import { Icon, type IconName } from './Icon'
 import { useState, useEffect, useRef } from "react"
 import { useAuth } from "./auth"
 import { ptBR } from "react-day-picker/locale"
@@ -68,7 +69,7 @@ export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
   return (
     <div ref={ref} style={{ position: "relative" }}>
       <button aria-label="Selecionar período" aria-expanded={open} onClick={() => { setLocal(value); setMFrom(new Date(value.from.getFullYear(), value.from.getMonth(), 1)); setMTo(new Date(value.to.getFullYear(), value.to.getMonth(), 1)); setOpen(v => !v) }} style={triggerStyle}>
-        <CalIcon /> {label} <ChevronIcon open={open} />
+        <Icon name="calendar" /> {label} <ChevronIcon open={open} />
       </button>
       {open && (
         <div className="date-popover" style={{ position:"absolute", top:"calc(100% + 6px)", left:0, background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:12, boxShadow:`0 8px 32px var(--shd)`, zIndex:200, overflow:"hidden" }}>
@@ -85,9 +86,9 @@ export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
               ))}
             </div>
             <div style={{ padding:"12px 8px", display:"flex", gap:4, flexWrap:"wrap" }}>
-              <DayPicker mode="range" selected={local} onSelect={r => r && setLocal(r)} month={mFrom} onMonthChange={setMFrom} locale={ptBR} numberOfMonths={1} />
+              <DayPicker components={{ Chevron: ({ orientation, className }) => <Icon name={orientation === "left" ? "chevronLeft" : orientation === "right" ? "chevronRight" : "chevronDown"} size={18} className={className} /> }} mode="range" selected={local} onSelect={r => r && setLocal(r)} month={mFrom} onMonthChange={setMFrom} locale={ptBR} numberOfMonths={1} />
               <div style={{ width:1, background:"var(--bd)", alignSelf:"stretch" }} />
-              <DayPicker mode="range" selected={local} onSelect={r => r && setLocal(r)} month={mTo} onMonthChange={setMTo} locale={ptBR} numberOfMonths={1} />
+              <DayPicker components={{ Chevron: ({ orientation, className }) => <Icon name={orientation === "left" ? "chevronLeft" : orientation === "right" ? "chevronRight" : "chevronDown"} size={18} className={className} /> }} mode="range" selected={local} onSelect={r => r && setLocal(r)} month={mTo} onMonthChange={setMTo} locale={ptBR} numberOfMonths={1} />
             </div>
           </div>
           <div style={{ borderTop:"1px solid var(--bd)", padding:"10px 16px", display:"flex", justifyContent:"flex-end", gap:8 }}>
@@ -239,7 +240,7 @@ export function InfoTooltip({ text }: { text: string }) {
 
   return (
     <div ref={ref} style={{ position:"relative", display:"inline-flex" }} onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
-      <span style={{ fontSize:12, color:"var(--t4)", cursor:"help", lineHeight:1 }}>ⓘ</span>
+      <button type="button" aria-label={text} onFocus={() => setShow(true)} onBlur={() => setShow(false)} style={{ display:"inline-flex", border:0, padding:0, background:"transparent", color:"var(--t3)", cursor:"help" }}><Icon name="info" size={14} /></button>
       {show && (
         <div style={{ position:"absolute", top:"50%", [pos==="right"?"left":"right"]:"calc(100% + 6px)", transform:"translateY(-50%)", background:"var(--t1)", color:"var(--sf)", fontSize:12, lineHeight:1.5, padding:"8px 12px", borderRadius:8, width:240, zIndex:300, boxShadow:"0 4px 16px rgba(0,0,0,0.2)", pointerEvents:"none" }}>
           {text}
@@ -264,7 +265,7 @@ export function StatusBadge({ status }: { status: OrderStatus }) {
 export function Spinner() {
   return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:64 }}>
-      <div style={{ width:32, height:32, borderRadius:"50%", border:"3px solid var(--bd)", borderTopColor:"var(--t1)", animation:"spin 0.7s linear infinite" }} />
+      <span role="status" aria-label="Carregando"><Icon name="loader" size={32} className="icon-spin" style={{ color:"var(--t3)" }} /></span>
     </div>
   )
 }
@@ -290,10 +291,10 @@ export function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 
-export function EmptyState({ icon, title, desc, action }: { icon: string; title: string; desc: string; action?: React.ReactNode }) {
+export function EmptyState({ icon, title, desc, action }: { icon: IconName; title: string; desc: string; action?: React.ReactNode }) {
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"48px 24px", gap:12, textAlign:"center" }}>
-      <span style={{ fontSize:36 }}>{icon}</span>
+      <Icon name={icon} size={32} style={{ color:"var(--t3)" }} />
       <div style={{ fontWeight:700, fontSize:15, color:"var(--t1)" }}>{title}</div>
       <div style={{ fontSize:13, color:"var(--t3)", maxWidth:320 }}>{desc}</div>
       {action}
@@ -310,17 +311,15 @@ const triggerStyle: React.CSSProperties = { display:"flex", alignItems:"center",
 function Checkbox({ checked }: { checked: boolean }) {
   return (
     <span style={{ width:16, height:16, borderRadius:4, border:checked?"none":"1.5px solid var(--bd2)", background:checked?"var(--pri)":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-      {checked && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3l2.5 2.5L8 1" stroke="var(--pri-t)" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"/></svg>}
+      {checked && <Icon name="check" size={12} style={{ color:"var(--pri-t)" }} />}
     </span>
   )
 }
 
-function CalIcon() {
-  return <svg width={13} height={13} viewBox="0 0 13 13" fill="none" style={{flexShrink:0}}><rect x=".5" y="2" width="12" height="10.5" rx="1.8" stroke="var(--t3)" strokeWidth={1.2}/><path d="M.5 5h12" stroke="var(--t3)" strokeWidth={1.2}/><path d="M4 .5v3M9 .5v3" stroke="var(--t3)" strokeWidth={1.2} strokeLinecap="round"/></svg>
-}
+
 
 export function ChevronIcon({ open }: { open: boolean }) {
-  return <svg width={11} height={11} viewBox="0 0 11 11" fill="none" style={{flexShrink:0,transform:open?"rotate(180deg)":"none",transition:"transform 0.15s"}}><path d="M2 4l3.5 3.5L9 4" stroke="var(--t3)" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round"/></svg>
+  return <Icon name="chevronDown" style={{ color:"var(--t3)", transform:open?"rotate(180deg)":"none", transition:"transform 0.15s" }} />
 }
 
 export function MarketplaceDot({ id }: { id: MarketplaceId }) {

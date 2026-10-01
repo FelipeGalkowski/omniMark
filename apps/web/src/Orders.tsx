@@ -1,3 +1,4 @@
+import { Icon } from './Icon'
 import { useState, useMemo } from "react"
 import { useAuth } from "./auth"
 import { orderSale, confirmedRefunds } from './kpis'
@@ -76,10 +77,7 @@ export default function OrdersPage({ companyId, accounts, orders }: OrdersPagePr
             placeholder="Buscar por nº do pedido…"
             style={{ padding:"7px 12px 7px 32px", borderRadius:8, border:"1.5px solid var(--bd)", fontSize:13, color:"var(--t1)", background:"var(--inp)", fontFamily:"'DM Sans',sans-serif", outline:"none", width:200 }}
           />
-          <svg width={13} height={13} viewBox="0 0 13 13" fill="none" style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }}>
-            <circle cx="5.5" cy="5.5" r="4" stroke="var(--t3)" strokeWidth={1.3}/>
-            <path d="M9 9l2.5 2.5" stroke="var(--t3)" strokeWidth={1.3} strokeLinecap="round"/>
-          </svg>
+          <Icon name="search" style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", pointerEvents:"none", color:"var(--t3)" }} />
         </div>
         <DateRangePicker value={dateRange} onChange={v => { setDateRange(v); setPage(1) }} />
         <MarketplaceDropdown selected={selMarkets} onToggle={toggleMarket} />
@@ -96,7 +94,7 @@ export default function OrdersPage({ companyId, accounts, orders }: OrdersPagePr
       )}
 
       {filtered.length === 0 ? (
-        <EmptyState icon="📋" title={user.isDemoUser ? "Nenhum pedido encontrado" : "Nenhum pedido sincronizado"} desc={user.isDemoUser ? "Ajuste os filtros ou a busca para encontrar pedidos." : "Os pedidos aparecerão aqui quando as integrações com marketplaces estiverem disponíveis."} action={user.isDemoUser ? <button onClick={clearFilters} style={btnPri}>Limpar filtros</button> : undefined} />
+        <EmptyState icon="orders" title={user.isDemoUser ? "Nenhum pedido encontrado" : "Nenhum pedido sincronizado"} desc={user.isDemoUser ? "Ajuste os filtros ou a busca para encontrar pedidos." : "Os pedidos aparecerão aqui quando as integrações com marketplaces estiverem disponíveis."} action={user.isDemoUser ? <button onClick={clearFilters} style={btnPri}>Limpar filtros</button> : undefined} />
       ) : (
         <div style={{ background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:14, overflow:"auto" }}>
           <table style={{ minWidth:760, width:"100%", borderCollapse:"collapse", fontSize:13 }}>
@@ -141,14 +139,14 @@ export default function OrdersPage({ companyId, accounts, orders }: OrdersPagePr
 
       {totalPages > 1 && (
         <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, flexWrap:"wrap" }}>
-          <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1} style={{ ...btnSec, padding:"5px 12px", fontSize:12, opacity:page===1?0.4:1 }}>← Anterior</button>
+          <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1} style={{ ...btnSec, padding:"5px 12px", fontSize:12, opacity:page===1?0.4:1 }}><Icon name="arrowLeft" /> Anterior</button>
           {Array.from({length:Math.min(7,totalPages)},(_,i) => {
             const p = totalPages <= 7 ? i+1 : page <= 4 ? i+1 : page >= totalPages-3 ? totalPages-6+i : page-3+i
             return (
               <button key={p} onClick={() => setPage(p)} style={{ width:32, height:32, borderRadius:7, border:"1.5px solid", borderColor:page===p?"var(--t1)":"var(--bd)", background:page===p?"var(--pri)":"transparent", color:page===p?"var(--pri-t)":"var(--t2)", fontSize:13, fontWeight:page===p?700:400, cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>{p}</button>
             )
           })}
-          <button onClick={() => setPage(p => Math.min(totalPages,p+1))} disabled={page===totalPages} style={{ ...btnSec, padding:"5px 12px", fontSize:12, opacity:page===totalPages?0.4:1 }}>Próxima →</button>
+          <button onClick={() => setPage(p => Math.min(totalPages,p+1))} disabled={page===totalPages} style={{ ...btnSec, padding:"5px 12px", fontSize:12, opacity:page===totalPages?0.4:1 }}>Próxima <Icon name="arrowRight" /></button>
         </div>
       )}
 
@@ -182,7 +180,7 @@ function OrderPanel({ order, accounts, onClose }: { order: Order; accounts: Acco
             </div>
           </div>
           <button onClick={onClose} style={{ width:28, height:28, borderRadius:7, border:"1.5px solid var(--bd)", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, color:"var(--t3)" }}>
-            <svg width={10} height={10} viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"/></svg>
+            <Icon name="close" />
           </button>
         </div>
 

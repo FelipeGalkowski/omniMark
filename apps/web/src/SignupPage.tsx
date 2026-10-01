@@ -1,3 +1,4 @@
+import { Icon } from './Icon'
 import { useState } from "react"
 import { api, type UserRecord } from "./api"
 import type { User } from "./auth"
@@ -82,7 +83,7 @@ export default function SignupPage({ onLogin, onBack }: Props) {
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
                 {reqs.map(r => (
                   <span key={r.msg} style={{ fontSize: 11, color: r.ok ? "#16a34a" : "var(--t4)", display: "flex", alignItems: "center", gap: 3 }}>
-                    {r.ok ? "✓" : "·"} {r.msg}
+                    <Icon name={r.ok ? "check" : "circle"} size={12} /> {r.msg}
                   </span>
                 ))}
               </div>
@@ -90,7 +91,7 @@ export default function SignupPage({ onLogin, onBack }: Props) {
             {pw.length === 0 && (
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
                 {reqs.map(r => (
-                  <span key={r.msg} style={{ fontSize: 11, color: "var(--t4)", display: "flex", alignItems: "center", gap: 3 }}>· {r.msg}</span>
+                  <span key={r.msg} style={{ fontSize: 11, color: "var(--t4)", display: "flex", alignItems: "center", gap: 3 }}><Icon name="circle" size={12} /> {r.msg}</span>
                 ))}
               </div>
             )}

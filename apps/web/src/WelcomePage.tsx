@@ -1,3 +1,4 @@
+import { Icon } from './Icon'
 import { useState } from 'react'
 import type { User } from './auth'
 import { formatCNPJ, validateCNPJ, type Company } from './data'
@@ -25,10 +26,10 @@ export default function WelcomePage({ user, onCreate }: { user: User; onCreate: 
   }
   return <div className="welcome-page"><section className="welcome-card">
     {!started ? <div className="welcome-intro">
-      <span aria-hidden="true" style={{ fontSize:48 }}>👋</span>
+      <Icon name="building" size={36} style={{ color:"var(--t3)" }} />
       <h1>Bem-vindo ao Omnimark, {user.name.split(' ')[0]}</h1>
       <p>Cadastre sua empresa para organizar suas contas de marketplace em um só lugar.</p>
-      <button style={submitBtn} onClick={() => setStarted(true)}>Cadastrar primeira empresa →</button>
+      <button style={submitBtn} onClick={() => setStarted(true)}>Cadastrar primeira empresa <Icon name="arrowRight" /></button>
       <small>As integrações com marketplaces serão disponibilizadas em uma próxima etapa.</small>
     </div> : <form onSubmit={submit} className="stack-form">
       <h1>Cadastre sua empresa</h1>

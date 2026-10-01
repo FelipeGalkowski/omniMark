@@ -1,3 +1,4 @@
+import { Icon } from './Icon'
 import { api } from "./api"
 import { useState } from "react"
 import { useAuth } from "./auth"
@@ -80,7 +81,7 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
   return (
     <div className="page-body" style={{ padding:"24px 28px", display:"flex", flexDirection:"column", gap:20 }}>
       <div style={{ background:"var(--sf3)", border:"1px solid var(--bd)", borderRadius:10, padding:"10px 16px", display:"flex", alignItems:"center", gap:10 }}>
-        <span style={{ fontSize:16 }}>ℹ️</span>
+        <Icon name="info" />
         <span style={{ fontSize:12, color:"var(--t2)" }}>
           {demo ? <><strong>Demonstração:</strong> as conexões aqui são fictícias. As ações simulam uma integração e não acessam os marketplaces.</> : <><strong>Mercado Livre.</strong> Atualize os dados para consultar os pedidos dos últimos 12 meses. Informações indisponíveis serão identificadas no painel.</>}
         </span>
@@ -91,12 +92,12 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
           <h1 style={{ margin:0, fontSize:18, fontWeight:700, letterSpacing:"-0.02em", color:"var(--t1)" }}>Contas e Integrações</h1>
           <p style={{ margin:"4px 0 0", fontSize:13, color:"var(--t3)" }}>{companyAccounts.length} conta{companyAccounts.length!==1?"s":""} configurada{companyAccounts.length!==1?"s":""}</p>
         </div>
-        <button disabled={!demo && !canEdit} onClick={() => setConnectOpen(true)} style={btnPri}>+ Conectar conta</button>
+        <button aria-label="Conectar nova conta" disabled={!demo && !canEdit} onClick={() => setConnectOpen(true)} style={btnPri}><Icon name="plus" /> Conectar conta</button>
       </div>
 
       {companyAccounts.length === 0 ? (
         <EmptyState
-          icon="🔌"
+          icon="plug"
           title="Nenhuma conta conectada"
           desc="Conecte sua primeira conta de marketplace para começar a consolidar as vendas."
           action={<button disabled={!demo && !canEdit} onClick={() => setConnectOpen(true)} style={btnPri}>Conectar conta</button>}
@@ -113,7 +114,7 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
             return (
               <div key={acct.id} style={{ background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:14, padding:"18px 22px", display:"flex", alignItems:"flex-start", gap:16 }}>
                 <div style={{ width:40, height:40, borderRadius:10, background:mkt.bg, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, border:`1.5px solid ${mkt.color}` }}>
-                  <span style={{ width:16, height:16, borderRadius:3, background:mkt.color, border:mkt.color==="#000000"?"1px solid rgba(255,255,255,0.3)":"none", display:"block" }} />
+                  <Icon name="store" size={20} style={{ color:mkt.text }} />
                 </div>
 
                 <div style={{ flex:1, minWidth:0 }}>
@@ -131,7 +132,7 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
 
                   {fb && (
                     <div style={{ marginTop:8, background:fb.ok?"#DCFCE7":"#FEE2E2", border:`1px solid ${fb.ok?"#86EFAC":"#FCA5A5"}`, borderRadius:8, padding:"8px 12px", fontSize:12, color:fb.ok?"#166534":"#991B1B" }}>
-                      {fb.ok?"✓":"⚠"} {fb.msg}
+                      <Icon name={fb.ok ? "check" : "alert"} /> {fb.msg}
                     </div>
                   )}
 
@@ -233,7 +234,7 @@ function ConnectModal({ onClose, onConnect, demo, companyId }: { companyId: stri
             {step==="done"   && "Conta conectada!"}
           </h2>
           <button aria-label="Fechar janela" onClick={onClose} style={{ width:28, height:28, borderRadius:7, border:"1.5px solid var(--bd)", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:"var(--t3)" }}>
-            <svg width={10} height={10} viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"/></svg>
+            <Icon name="close" />
           </button>
         </div>
 
@@ -247,7 +248,7 @@ function ConnectModal({ onClose, onConnect, demo, companyId }: { companyId: stri
                   onMouseLeave={e => e.currentTarget.style.borderColor="var(--bd)"}
                 >
                   <span style={{ width:32, height:32, borderRadius:8, background:m.bg, border:`2px solid ${m.color}`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                    <span style={{ width:14, height:14, borderRadius:3, background:m.color, border:m.color==="#000000"?"1px solid rgba(255,255,255,0.4)":"none" }} />
+                    <Icon name="store" size={18} style={{ color:m.text }} />
                   </span>
                   <span style={{ fontSize:14, fontWeight:600, color:"var(--t1)" }}>{m.label}</span>
                 </button>
@@ -259,7 +260,7 @@ function ConnectModal({ onClose, onConnect, demo, companyId }: { companyId: stri
           {demo && step === "name" && mkt && (
             <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
               <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", background:mkt.bg, borderRadius:10 }}>
-                <span style={{ width:28, height:28, borderRadius:7, background:mkt.color, border:mkt.color==="#000000"?"1px solid rgba(255,255,255,0.3)":"none", display:"block", flexShrink:0 }} />
+                <Icon name="store" size={24} style={{ color:mkt.text }} />
                 <span style={{ fontSize:13, fontWeight:600, color:mkt.text }}>{mkt.label}</span>
               </div>
               <div>
@@ -283,7 +284,7 @@ function ConnectModal({ onClose, onConnect, demo, companyId }: { companyId: stri
 
           {step === "connecting" && (
             <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:16, padding:"24px 0" }}>
-              <div style={{ width:40, height:40, borderRadius:"50%", border:"3px solid var(--bd)", borderTopColor:"var(--t1)", animation:"spin 0.7s linear infinite" }} />
+              <Icon name="loader" size={32} className="icon-spin" style={{ color:"var(--t3)" }} />
               <div style={{ textAlign:"center" }}>
                 <div style={{ fontWeight:600, fontSize:14, color:"var(--t1)" }}>Estabelecendo conexão…</div>
                 <div style={{ fontSize:12, color:"var(--t3)", marginTop:4 }}>Isso é uma demonstração — nenhuma credencial real é necessária.</div>
@@ -293,7 +294,7 @@ function ConnectModal({ onClose, onConnect, demo, companyId }: { companyId: stri
 
           {step === "done" && (
             <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:16, padding:"24px 0" }}>
-              <div style={{ width:48, height:48, borderRadius:"50%", background:"#DCFCE7", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>✓</div>
+              <div style={{ width:48, height:48, borderRadius:"50%", background:"#DCFCE7", display:"flex", alignItems:"center", justifyContent:"center", color:"#166534" }}><Icon name="check" size={24} /></div>
               <div style={{ textAlign:"center" }}>
                 <div style={{ fontWeight:700, fontSize:15, color:"var(--t1)" }}>Conta conectada!</div>
                 <div style={{ fontSize:12, color:"var(--t3)", marginTop:4 }}>

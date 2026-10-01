@@ -1,3 +1,4 @@
+import { Icon } from './Icon'
 
 export default function AuthLayout({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
   return (
@@ -68,7 +69,7 @@ export function PasswordInput({ value, onChange, show, onToggle, error, placehol
         aria-label={show ? "Ocultar senha" : "Mostrar senha"}
         style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--t3)", fontSize: 13, padding: 2 }}
       >
-        {show ? "🙈" : "👁"}
+        <Icon name={show ? "eyeOff" : "eye"} size={18} />
       </button>
     </div>
   )

@@ -1,3 +1,4 @@
+import { Icon } from './Icon'
 import { useState } from "react"
 import { useAuth } from "./auth"
 import { api } from './api'
@@ -74,7 +75,7 @@ export default function MyAccountPage() {
             {saving ? "Salvando…" : "Salvar alterações"}
           </button>
           {nameSaved && (
-            <span style={{ fontSize: 13, color: "#16a34a", fontWeight: 600 }}>✓ Salvo!</span>
+            <span style={{ fontSize: 13, color: "#16a34a", fontWeight: 600 }}><Icon name="check" /> Salvo!</span>
           )}
         </div>
       </Section>
@@ -82,7 +83,7 @@ export default function MyAccountPage() {
       <Section title="Senha">
         {pwMsg && (
           <div style={{ background: "#DCFCE7", border: "1px solid #86EFAC", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#166534", marginBottom: 4 }}>
-            ✓ {pwMsg}
+            <Icon name="check" /> {pwMsg}
           </div>
         )}
 
