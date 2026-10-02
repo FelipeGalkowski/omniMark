@@ -10,6 +10,7 @@ import argon2 from 'argon2'
 import { z } from 'zod'
 import { registerMercadoLivre } from './mercadolivre.js'
 import { registerOrderSync } from './order-sync.js'
+import { registerAccounts } from './accounts.js'
 import { registerWeb, rewriteApiUrl } from './web.js'
 
 const db = new PrismaClient()
@@ -117,6 +118,7 @@ app.get('/companies/:id/dashboard', { preHandler: authenticated }, async (req: a
 })
 registerMercadoLivre(app, db, authenticated, cookieName, origin)
 registerOrderSync(app, db, authenticated, origin)
+registerAccounts(app, db, authenticated, origin)
 if (process.env.SERVE_WEB === 'true') await registerWeb(app, process.env.WEB_DIST_PATH ?? '../web/dist')
 app.addHook('onClose', async () => { await db.$disconnect() })
 for (const signal of ['SIGTERM', 'SIGINT'] as const) process.once(signal, () => { void app.close() })

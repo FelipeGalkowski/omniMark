@@ -42,6 +42,8 @@ A suíte cobre componentes e OAuth. `check-local.mjs` exige os serviços ativos,
 
 ## Funcionalidades
 
+A lixeira em Contas permite que proprietários e administradores desconectem uma conta após confirmação. A operação remove do OmniMark a conexão, as credenciais e os pedidos importados (incluindo seus itens), sem alterar a conta ou os pedidos no marketplace. Durante uma sincronização em andamento, a remoção é bloqueada. Para importar novamente, é necessário reconectar a conta. A autorização no painel do marketplace não é revogada por essa remoção local.
+
 - Cadastro, login, logout, perfil e troca de senha.
 - Sessões por cookie HttpOnly e senhas protegidas com Argon2.
 - Empresas com acesso por vínculo e papel.

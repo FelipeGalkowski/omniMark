@@ -1,6 +1,6 @@
 import { Icon } from './Icon'
 import { api } from "./api"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useAuth } from "./auth"
 import { DEMO_NOW, MARKETPLACES, formatDateTime, type Account, type MarketplaceId } from "./data"
 import { EmptyState, btnPri, btnSec } from "./ui"
@@ -19,15 +19,38 @@ interface AccountsPageProps {
   setAccounts: React.Dispatch<React.SetStateAction<Account[]>>
   canEdit?: boolean
   onSynced?: () => void
+  onDisconnected?: (accountId: string) => void
 }
 
-export default function AccountsPage({ companyId, accounts, setAccounts, canEdit = true, onSynced }: AccountsPageProps) {
+export default function AccountsPage({ companyId, accounts, setAccounts, canEdit = true, onSynced, onDisconnected }: AccountsPageProps) {
   const { user } = useAuth()
   const demo = user.isDemoUser
   const companyAccounts = accounts.filter(a => a.companyId === companyId)
   const [connectOpen, setConnectOpen] = useState(false)
+  const [disconnectTarget, setDisconnectTarget] = useState<Account | null>(null)
+  const [disconnecting, setDisconnecting] = useState(false)
+  const [disconnectError, setDisconnectError] = useState('')
+  const disconnectBusy = useRef(false)
   const [syncing,     setSyncing]     = useState<Set<string>>(new Set())
   const [feedback,    setFeedback]    = useState<Record<string, { ok: boolean; msg: string }>>({})
+
+  async function disconnect() {
+    if (!disconnectTarget || disconnectBusy.current || (!demo && !canEdit)) return
+    const target = disconnectTarget
+    disconnectBusy.current = true
+    setDisconnecting(true); setDisconnectError('')
+    try {
+      if (!demo) await api(`/companies/${companyId}/accounts/${target.id}`, { method: 'DELETE' })
+      setAccounts(previous => previous.filter(account => account.id !== target.id))
+      setDisconnectTarget(null)
+      onDisconnected?.(target.id)
+    } catch (error) {
+      setDisconnectError((error as Error).message)
+    } finally {
+      disconnectBusy.current = false
+      setDisconnecting(false)
+    }
+  }
 
   async function triggerUpdate(id: string) {
     if (syncing.has(id) || (!demo && !canEdit)) return
@@ -142,6 +165,13 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
                 </div>
 
                 <div style={{ display:"flex", gap:8, flexShrink:0, flexWrap:"wrap", justifyContent:"flex-end" }}>
+                  {(demo || canEdit) && <button
+                    aria-label={`Desconectar ${acct.name}`}
+                    title="Desconectar conta"
+                    disabled={isSyncing || disconnecting}
+                    onClick={() => { setDisconnectError(''); setDisconnectTarget(acct) }}
+                    style={{ ...btnSec, padding:'7px', color:'var(--t3)', opacity:isSyncing ? 0.5 : 1 }}
+                  ><Icon name="trash" size={18} /></button>}
                   {acct.status === "reconnect_needed" && !isSyncing && (
                     <button disabled={!demo && (!canEdit || acct.marketplace !== "mercadolivre")} onClick={() => demo ? triggerReconnect(acct.id) : setConnectOpen(true)} style={{ ...btnPri, fontSize:12, padding:"6px 14px", background:"#EF4444" }}>
                       Reconectar
@@ -169,8 +199,49 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
       )}
 
       {connectOpen && <ConnectModal companyId={companyId} demo={demo} onClose={() => setConnectOpen(false)} onConnect={addAccount} />}
+      {disconnectTarget && <DisconnectModal account={disconnectTarget} busy={disconnecting} error={disconnectError}
+        onClose={() => { if (!disconnectBusy.current) setDisconnectTarget(null) }} onConfirm={disconnect} />}
     </div>
   )
+}
+
+function DisconnectModal({ account, busy, error, onClose, onConfirm }: {
+  account: Account; busy: boolean; error: string; onClose: () => void; onConfirm: () => void
+}) {
+  const dialog = useRef<HTMLDivElement>(null)
+  const cancel = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null
+    cancel.current?.focus()
+    return () => { if (previous?.isConnected) previous.focus() }
+  }, [])
+  return <div style={{ position:'fixed', inset:0, zIndex:60, background:'rgba(0,0,0,0.35)', display:'grid', placeItems:'center', padding:16 }}>
+    <div ref={dialog} role="alertdialog" aria-modal="true" aria-labelledby="disconnect-title" aria-describedby="disconnect-description" aria-busy={busy}
+      onKeyDown={event => {
+        if (event.key === 'Escape') { event.preventDefault(); if (!busy) onClose() }
+        if (event.key === 'Tab') {
+          const buttons = Array.from(dialog.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])
+          const first = buttons[0], last = buttons[buttons.length - 1]
+          if (!first) { event.preventDefault(); return }
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+          if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+        }
+      }}
+      style={{ width:440, maxWidth:'100%', background:'var(--sf)', border:'1px solid var(--bd)', borderRadius:14, padding:24, boxShadow:'0 16px 48px var(--shd2)' }}>
+      <h2 id="disconnect-title" style={{ margin:'0 0 12px', fontSize:18, color:'var(--t1)' }}>Desconectar conta?</h2>
+      <p id="disconnect-description" style={{ fontSize:13, lineHeight:1.6, color:'var(--t2)', overflowWrap:'anywhere' }}>
+        A conta <strong>{account.name}</strong> e seus pedidos importados serão removidos do OmniMark.
+        Sua conta e seus pedidos no marketplace não serão alterados. Para voltar a importar, conecte a conta novamente.
+      </p>
+      {error && <p role="alert" style={{ fontSize:13, color:'#DC2626' }}>{error}</p>}
+      <div style={{ display:'flex', justifyContent:'flex-end', gap:10, marginTop:20 }}>
+        <button ref={cancel} disabled={busy} style={btnSec} onClick={onClose}>Cancelar</button>
+        <button disabled={busy} style={{ ...btnPri, background:'#B91C1C' }} onClick={onConfirm}>
+          {busy ? 'Desconectando…' : 'Desconectar conta'}
+        </button>
+      </div>
+    </div>
+  </div>
 }
 
 
