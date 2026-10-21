@@ -4,7 +4,7 @@ import type { PrismaClient, User } from '@prisma/client'
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import argon2 from 'argon2'
 import { z } from 'zod'
-import { claimEmailThrottle, digest, emailConfiguration, queueChallenge, queuePasswordNotice, verificationHash } from './account-email.js'
+import { claimEmailThrottle, digest, EmailConfigurationError, emailConfiguration, queueChallenge, queuePasswordNotice, verificationHash } from './account-email.js'
 
 const emailInput = z.string().trim().email().max(254).transform(value => value.toLowerCase())
 const passwordInput = z.string().min(10).max(128)
@@ -22,8 +22,10 @@ export function registerAuthentication(app: FastifyInstance, db: PrismaClient, o
     if (req.headers.origin !== origin) return reply.code(403).send({ error: 'Origem não permitida.' })
   }
   function mailReady(reply: FastifyReply) {
-    try { emailConfiguration(); return true } catch {
-      reply.code(503).send({ error: 'O envio de e-mails ainda não está configurado. Tente novamente mais tarde.' }); return false
+    try { emailConfiguration(); return true } catch (error) {
+      const configurationIssues = error instanceof EmailConfigurationError ? error.issues : undefined
+      app.log.warn({ configurationIssues }, 'ACCOUNT_EMAIL_CONFIGURATION_INVALID')
+      reply.code(503).send({ error: 'O envio de e-mails ainda não está configurado. Tente novamente mais tarde.', code: 'EMAIL_CONFIGURATION_INVALID', configurationIssues }); return false
     }
   }
   async function newSession(user: User, reply: FastifyReply) {

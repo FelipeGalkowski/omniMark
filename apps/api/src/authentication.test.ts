@@ -204,6 +204,33 @@ it('rejects untrusted origins and refuses new registration without mail configur
   expect((await requestReset()).statusCode).toBe(503)
   expect(tables.user).toHaveLength(0)
 })
+it.each([
+  ['RESEND_API_KEY', '', 'missing'],
+  ['RESEND_FROM', 'RESEND_FROM', 'invalid'],
+  ['RESEND_FROM', 'OmniMark <access@example.test>\r\nBcc: private@example.test', 'invalid'],
+  ['WEB_ORIGIN', 'http://unsafe.example.test/private', 'invalid'],
+  ['TOKEN_ENCRYPTION_KEY', 'private-invalid-key', 'invalid'],
+] as const)('identifies invalid %s configuration without exposing values', async (variable, value, problem) => {
+  vi.stubEnv(variable, value)
+  const response = await requestReset()
+  expect(response.statusCode).toBe(503)
+  expect(response.json()).toEqual({
+    error: 'O envio de e-mails ainda não está configurado. Tente novamente mais tarde.',
+    code: 'EMAIL_CONFIGURATION_INVALID', configurationIssues: [{ variable, problem }],
+  })
+  for (const privateValue of ['re_test-only', 'private@example.test', 'private-invalid-key', 'unsafe.example.test', 'access@example.test', 'ab'.repeat(32)]) expect(response.body).not.toContain(privateValue)
+  expect(tables.emailDelivery).toHaveLength(0)
+  expect(tables.emailThrottle).toHaveLength(0)
+})
+it('reports all missing email settings together', async () => {
+  vi.stubEnv('RESEND_API_KEY', ''); vi.stubEnv('RESEND_FROM', '')
+  const response = await register()
+  expect(response.statusCode).toBe(503)
+  expect(response.json().configurationIssues).toEqual([
+    { variable: 'RESEND_API_KEY', problem: 'missing' }, { variable: 'RESEND_FROM', problem: 'missing' },
+  ])
+  expect(tables.user).toHaveLength(0)
+})
 it('sends queued mail once across competing workers and erases plaintext-equivalent payloads', async () => {
   await register()
   const send = vi.fn(async (_url: any, _init: any) => new Response('{"id":"mail-id"}', { status: 200 }))

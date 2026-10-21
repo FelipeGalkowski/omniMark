@@ -5,14 +5,36 @@ import { z } from 'zod'
 import { vault } from './mercadolivre.js'
 
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex')
+type EmailConfigurationVariable = 'RESEND_API_KEY' | 'RESEND_FROM' | 'WEB_ORIGIN' | 'TOKEN_ENCRYPTION_KEY'
+export class EmailConfigurationError extends Error {
+  constructor(readonly issues: { variable: EmailConfigurationVariable; problem: 'missing' | 'invalid' }[]) {
+    super('Configuração de e-mail indisponível')
+  }
+}
 export function emailConfiguration() {
-  const apiKey = z.string().trim().min(1).parse(process.env.RESEND_API_KEY)
-  const from = z.string().trim().min(1).max(254).parse(process.env.RESEND_FROM)
-  if (/[\r\n]/.test(from) || !z.string().email().safeParse(from.match(/<([^<>]+)>$/)?.[1] ?? from).success) throw new Error('Remetente inválido')
-  const url = new URL(process.env.WEB_ORIGIN ?? 'http://localhost:5173')
-  if (url.username || url.password || url.search || url.hash || url.pathname !== '/' ||
-    (url.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname)))) throw new Error('Origem inválida')
-  return { apiKey, from, origin: url.origin, crypt: vault(process.env.TOKEN_ENCRYPTION_KEY ?? '') }
+  const issues: EmailConfigurationError['issues'] = []
+  const read = <T>(variable: EmailConfigurationVariable, parse: () => T): T | undefined => {
+    try { return parse() } catch {
+      // Only fixed variable names and issue categories escape this boundary, never values or validation errors.
+      issues.push({ variable, problem: process.env[variable]?.trim() ? 'invalid' : 'missing' })
+      return undefined
+    }
+  }
+  const apiKey = read('RESEND_API_KEY', () => z.string().trim().min(1).parse(process.env.RESEND_API_KEY))
+  const from = read('RESEND_FROM', () => {
+    const value = z.string().trim().min(1).max(254).parse(process.env.RESEND_FROM)
+    if (/[\r\n]/.test(value) || !z.string().email().safeParse(value.match(/<([^<>]+)>$/)?.[1] ?? value).success) throw new Error('Remetente inválido')
+    return value
+  })
+  const origin = read('WEB_ORIGIN', () => {
+    const url = new URL(process.env.WEB_ORIGIN ?? 'http://localhost:5173')
+    if (url.username || url.password || url.search || url.hash || url.pathname !== '/' ||
+      (url.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname)))) throw new Error('Origem inválida')
+    return url.origin
+  })
+  const crypt = read('TOKEN_ENCRYPTION_KEY', () => vault(process.env.TOKEN_ENCRYPTION_KEY ?? ''))
+  if (issues.length) throw new EmailConfigurationError(issues)
+  return { apiKey: apiKey!, from: from!, origin: origin!, crypt: crypt! }
 }
 export const verificationHash = (userId: string, challengeId: string, code: string) => createHmac('sha256', process.env.TOKEN_ENCRYPTION_KEY ?? '').update(`verify:${userId}:${challengeId}:${code}`).digest('hex')
 const escape = (value: string) => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!)
