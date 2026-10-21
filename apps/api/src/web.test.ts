@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import Fastify from 'fastify'
 import { expect, it } from 'vitest'
 import { registerWeb, rewriteApiUrl } from './web.js'
+import { registerLegalPages } from './legal.js'
 
 it('serves the panel and assets without masking API errors or exposing files', async () => {
   const root = await mkdtemp(join(tmpdir(), 'omnimark-web-'))
@@ -15,8 +16,11 @@ it('serves the panel and assets without masking API errors or exposing files', a
     await writeFile(join(root, '.env'), 'private')
     app.get('/health', () => ({ status: 'ok' }))
     app.get('/integrations/mercadolivre/callback', req => req.query)
+    registerLegalPages(app)
     await registerWeb(app, root)
     expect((await app.inject('/')).body).toContain('OmniMark')
+    expect((await app.inject('/termos')).body).toContain('<h1>Termos de uso</h1>')
+    expect((await app.inject('/privacidade')).body).toContain('<h1>Política de privacidade</h1>')
     expect((await app.inject('/assets/app.js')).headers['cache-control']).toContain('immutable')
     expect((await app.inject('/api/health')).json()).toEqual({ status: 'ok' })
     expect((await app.inject('/integrations/mercadolivre/callback?state=example')).json()).toEqual({ state: 'example' })

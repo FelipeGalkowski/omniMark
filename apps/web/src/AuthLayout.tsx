@@ -26,6 +26,10 @@ export default function AuthLayout({ children, wide }: { children: React.ReactNo
       <p style={{ marginTop: 20, fontSize: 11, color: "var(--t4)", textAlign: "center", maxWidth: 320 }}>
         OmniMark · Sua operação em um só lugar
       </p>
+      <nav aria-label="Documentos do projeto" style={{ display: 'flex', gap: 16, fontSize: 12 }}>
+        <a href="/termos" style={{ color: 'var(--t3)' }}>Termos de uso</a>
+        <a href="/privacidade" style={{ color: 'var(--t3)' }}>Privacidade</a>
+      </nav>
     </div>
   )
 }

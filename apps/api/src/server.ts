@@ -9,6 +9,8 @@ import { randomBytes, createHash } from 'node:crypto'
 import argon2 from 'argon2'
 import { z } from 'zod'
 import { registerMercadoLivre } from './mercadolivre.js'
+import { registerMagalu } from './magalu.js'
+import { registerLegalPages } from './legal.js'
 import { registerOrderSync } from './order-sync.js'
 import { registerAccounts } from './accounts.js'
 import { registerWeb, rewriteApiUrl } from './web.js'
@@ -117,6 +119,8 @@ app.get('/companies/:id/dashboard', { preHandler: authenticated }, async (req: a
   return { integrationStatus: 'not_connected', orders: 0, grossRevenue: null, currency: 'BRL', note: 'Sem pedidos reais sincronizados; nenhum valor demonstrativo é exibido.' }
 })
 registerMercadoLivre(app, db, authenticated, cookieName, origin)
+registerMagalu(app, db, authenticated, cookieName, origin)
+registerLegalPages(app)
 registerOrderSync(app, db, authenticated, origin)
 registerAccounts(app, db, authenticated, origin)
 if (process.env.SERVE_WEB === 'true') await registerWeb(app, process.env.WEB_DIST_PATH ?? '../web/dist')

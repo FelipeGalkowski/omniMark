@@ -72,6 +72,33 @@ Use `develop` na homologação e `main` em produção. O workflow `Checks` valid
 
 ## Pendências
 
+### Preparação da conexão Magalu
+
+As rotas públicas `/termos` e `/privacidade` funcionam sem login, inclusive por acesso direto na imagem de produção. Os textos estão identificados como provisórios para revisão de Felipe Galkowski e descrevem o ambiente de homologação. O contato público informado pelo responsável é `felipegalk@outlook.com`; `LEGAL_CONTACT_EMAIL` permite substituí-lo em runtime. Antes de aceitar lojas de terceiros em produção, revise o conteúdo e a retenção real de logs/backups. Estas páginas não afirmam que o serviço já passou por revisão jurídica.
+
+A conexão OAuth do Magalu está disponível em Contas → Conectar conta → Magalu. Esta etapa armazena a autorização; a importação de pedidos Magalu e sua renovação de tokens durante a importação serão implementadas separadamente. O botão de atualização continua desabilitado para esse canal e nenhum pedido fictício é exibido para uma conta real.
+
+Após publicar e revisar as páginas, crie o cliente pelo IDM (PowerShell, em uma linha):
+
+```powershell
+.\idm client create --name "OmniMark" --description "Dashboard de vendas e indicadores de marketplaces" --privacy-term "https://teste.omnimark.tech/privacidade" --terms-of-use "https://teste.omnimark.tech/termos" --redirect-uris "https://teste.omnimark.tech/integrations/magalu/callback" --audience "https://api.magalu.com" --scopes "open:order-order-seller:read open:order-delivery-seller:read" --access-token-exp 7200
+```
+
+Guarde o Client Secret imediatamente: ele não é recuperável posteriormente. Configure somente nas variáveis de runtime do aplicativo de stage no Coolify:
+
+- `MAGALU_CLIENT_ID`: Client ID gerado pelo IDM.
+- `MAGALU_CLIENT_SECRET`: Client Secret gerado pelo IDM; nunca incluir em Git, screenshots ou logs.
+- `MAGALU_REDIRECT_URI`: `https://teste.omnimark.tech/integrations/magalu/callback` (igual ao cadastro do cliente).
+- `TOKEN_ENCRYPTION_KEY`: mantenha a chave existente do ambiente; trocar essa chave impede a leitura das credenciais já armazenadas, inclusive do Mercado Livre.
+
+O callback exige um estado válido, vinculado à sessão e empresa originais, com expiração de dez minutos e consumo único. Uma visita direta sem parâmetros retorna HTTP 400, como esperado. Tentativas Magalu ficam em tabela própria; a migração é aditiva e não altera credenciais ou tentativas do Mercado Livre. O código é criptografado antes de ser armazenado e trocado por tokens somente após a volta ao painel com a sessão original.
+
+O consentimento solicita apenas leitura de pedidos/entregas e `choose_tenants=true`, para selecionar a organização da loja. O identificador canônico da conta é extraído do `sub` do JWT recebido **diretamente** do endpoint fixo de tokens do ID Magalu; JWTs enviados pelo navegador não são aceitos. A mesma loja não pode ser vinculada a outra empresa. A identificação por tenant e os escopos ainda precisam de validação ponta a ponta com uma loja Magalu autorizada após a criação do cliente.
+
+Documentação usada: [criação do cliente](https://developers.magalu.com/docs/first-steps/create-an-application/create-application/index.html), [consentimento e tokens](https://developers.magalu.com/docs/first-steps/create-an-application/authentication-authorization/index.html), [identificação de tenants no ID Magalu](https://developers.magalu.com/docs/apis_logistic/carrier/first-steps/become_carrier_integrator/index.html).
+
+### Demais pendências
+
 A auditoria de dependências ainda aponta avisos na cadeia Prisma/deepmerge-ts e nas ferramentas de testes. A atualização dessas cadeias e a validação correspondente permanecem pendentes antes da liberação de produção.
 
 A importação consulta até 12 meses e 10 mil pedidos por conta, sem publicar uma lista parcial caso a paginação falhe. Os pedidos são atualizados por conta e identificador externo; uma falha de consulta preserva a sincronização anterior. Frete compartilhado sem conciliação, reembolsos ausentes e devoluções com estado não reconhecido aparecem como indisponíveis. O faturamento inclui o frete cobrado do comprador e não representa lucro ou saldo a receber.

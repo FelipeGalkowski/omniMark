@@ -37,16 +37,24 @@ export default function App() {
   const [showManage, setShowManage] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   const requestVersion = useRef(0)
-  const [oauthState] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('ml_state'))
+  const [oauthReturn] = useState(() => {
+    const params = new URLSearchParams(window.location.hash.slice(1))
+    const magalu = params.get('magalu_state')
+    const mercadoLivre = params.get('ml_state')
+    // An ambiguous return is never sent to either provider.
+    if (magalu && mercadoLivre) return null
+    return magalu ? { provider: 'magalu', state: magalu, label: 'Magalu' } : mercadoLivre ? { provider: 'mercadolivre', state: mercadoLivre, label: 'Mercado Livre' } : null
+  })
+  const oauthState = oauthReturn?.state
   const oauthStarted = useRef(false)
   const [connectionMessage, setConnectionMessage] = useState('')
   useEffect(() => { if (oauthState) window.history.replaceState(null, '', window.location.pathname + window.location.search) }, [oauthState])
   useEffect(() => {
     if (!oauthState || !user || user.isDemoUser || loading || !companies.length || oauthStarted.current) return
     oauthStarted.current = true
-    setConnectionMessage('Concluindo conexão com o Mercado Livre…')
-    api<{ companyId: string }>('/integrations/mercadolivre/complete', { method: 'POST', body: JSON.stringify({ state: oauthState }) })
-      .then(result => { setCompanyId(result.companyId); setPage('accounts'); setReloadKey(key => key + 1); setConnectionMessage('Conta conectada ao Mercado Livre. Clique em Atualizar dados para importar seus pedidos.') })
+    setConnectionMessage(`Concluindo conexão com o ${oauthReturn!.label}…`)
+    api<{ companyId: string }>(`/integrations/${oauthReturn!.provider}/complete`, { method: 'POST', body: JSON.stringify({ state: oauthState }) })
+      .then(result => { setCompanyId(result.companyId); setPage('accounts'); setReloadKey(key => key + 1); setConnectionMessage(oauthReturn!.provider === 'magalu' ? 'Conta conectada ao Magalu. A importação de pedidos está em preparação.' : 'Conta conectada ao Mercado Livre. Clique em Atualizar dados para importar seus pedidos.') })
       .catch((failure: Error) => setConnectionMessage(failure.message))
   }, [oauthState, user, loading, companies])
   const isDark = themeMode === 'dark' || (themeMode === 'system' && sysDark)

@@ -17,6 +17,50 @@ function mockFetch(handler: (path: string, init?: RequestInit) => { status?: num
 }
 
 describe('Frontend integrado', () => {
+  it('completa o retorno do Magalu sem chamar a integração do Mercado Livre', async () => {
+    window.history.replaceState(null, '', '/#magalu_state=magalu-test')
+    const fetch = mockFetch(path => {
+      if (path === '/api/auth/me') return { body: { user } }
+      if (path === '/api/companies') return { body: [{ id: 'company-real', name: 'Empresa real', role: 'OWNER' }] }
+      if (path === '/api/integrations/magalu/complete') return { body: { connected: true, companyId: 'company-real' } }
+      return { body: [] }
+    })
+    render(<Application />)
+    await screen.findByText('Conta conectada ao Magalu. A importação de pedidos está em preparação.')
+    expect(window.location.hash).toBe('')
+    expect(fetch.mock.calls.filter(([path]) => path === '/api/integrations/magalu/complete')).toHaveLength(1)
+    expect(fetch.mock.calls.some(([path]) => path.includes('/mercadolivre/'))).toBe(false)
+  })
+  it('não conclui um retorno ambíguo de dois provedores', async () => {
+    window.history.replaceState(null, '', '/#magalu_state=a&ml_state=b')
+    const fetch = mockFetch(path => {
+      if (path === '/api/auth/me') return { body: { user } }
+      if (path === '/api/companies') return { body: [{ id: 'company-real', name: 'Empresa real', role: 'OWNER' }] }
+      return { body: [] }
+    })
+    render(<Application />)
+    await screen.findByText('Sua visão geral começa aqui')
+    expect(fetch.mock.calls.some(([path]) => path.endsWith('/complete'))).toBe(false)
+    window.history.replaceState(null, '', '/')
+  })
+  it('inicia a autorização no Magalu e identifica configuração pendente', async () => {
+    const fetch = mockFetch(path => {
+      if (path === '/api/auth/me') return { body: { user } }
+      if (path === '/api/companies') return { body: [{ id: 'company-real', name: 'Empresa real', role: 'OWNER' }] }
+      if (path === '/api/companies/company-real/integrations/magalu/authorize') return { status: 503, body: { error: 'Configure as credenciais do Magalu.' } }
+      return { body: [] }
+    })
+    render(<Application />)
+    const action = userEvent.setup()
+    await screen.findByText('Sua visão geral começa aqui')
+    await action.click(screen.getByRole('button', { name: 'Contas' }))
+    await action.click(screen.getByRole('button', { name: 'Conectar nova conta' }))
+    await action.click(screen.getByRole('button', { name: 'Magalu' }))
+    expect(screen.getByText(/Selecione a organização/).textContent).toContain('importação de pedidos ainda está em preparação')
+    await action.click(screen.getByRole('button', { name: 'Autorizar com o ID Magalu' }))
+    expect((await screen.findByRole('alert')).textContent).toBe('Configure as credenciais do Magalu.')
+    expect(fetch.mock.calls.some(([path, init]) => path.endsWith('/magalu/authorize') && init?.method === 'POST')).toBe(true)
+  })
   it('sincroniza a conta real e carrega os pedidos retornados pela API', async () => {
     let synced = false
     const fetch = mockFetch((path, init) => {

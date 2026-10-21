@@ -146,6 +146,7 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
                     <AcctStatusBadge status={status} />
                   </div>
                   <div style={{ fontSize:12, color:"var(--t3)", marginTop:3 }}>{mkt.label}</div>
+                  {!demo && acct.marketplace === 'magalu' && <p style={{ fontSize:12, color:'var(--t3)', margin:'8px 0 0' }}>Conexão autorizada. A importação de pedidos do Magalu está em preparação.</p>}
 
                   {acct.errorMsg && (
                     <div style={{ marginTop:8, background: acct.status==="error"?"#FEE2E2":"#FEF3C7", border:`1px solid ${acct.status==="error"?"#FCA5A5":"#FCD34D"}`, borderRadius:8, padding:"8px 12px", fontSize:12, color: acct.status==="error"?"#991B1B":"#92400E" }}>
@@ -173,7 +174,7 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
                     style={{ ...btnSec, padding:'7px', color:'var(--t3)', opacity:isSyncing ? 0.5 : 1 }}
                   ><Icon name="trash" size={18} /></button>}
                   {acct.status === "reconnect_needed" && !isSyncing && (
-                    <button disabled={!demo && (!canEdit || acct.marketplace !== "mercadolivre")} onClick={() => demo ? triggerReconnect(acct.id) : setConnectOpen(true)} style={{ ...btnPri, fontSize:12, padding:"6px 14px", background:"#EF4444" }}>
+                    <button disabled={!demo && (!canEdit || !['mercadolivre', 'magalu'].includes(acct.marketplace))} onClick={() => demo ? triggerReconnect(acct.id) : setConnectOpen(true)} style={{ ...btnPri, fontSize:12, padding:"6px 14px", background:"#EF4444" }}>
                       Reconectar
                     </button>
                   )}
@@ -268,7 +269,8 @@ function ConnectModal({ onClose, onConnect, demo, companyId }: { companyId: stri
   async function authorize() {
     setBusy(true); setError("")
     try {
-      const result = await api<{ url: string }>(`/companies/${companyId}/integrations/mercadolivre/authorize`, { method: "POST", body: "{}" })
+      if (selMkt !== 'mercadolivre' && selMkt !== 'magalu') return
+      const result = await api<{ url: string }>(`/companies/${companyId}/integrations/${selMkt}/authorize`, { method: "POST", body: "{}" })
       window.location.assign(result.url)
     } catch (failure) { setError((failure as Error).message); setBusy(false) }
   }
@@ -300,7 +302,7 @@ function ConnectModal({ onClose, onConnect, demo, companyId }: { companyId: stri
         <div style={{ padding:"20px 24px 0", display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
           <h2 style={{ margin:0, fontSize:16, fontWeight:700, color:"var(--t1)" }}>
             {step==="choose" && "Conectar conta"}
-            {step==="name" && (demo ? "Nome da conta" : selMkt === "mercadolivre" ? "Autorizar Mercado Livre" : "Integração em preparação")}
+            {step==="name" && (demo ? "Nome da conta" : selMkt === "mercadolivre" ? "Autorizar Mercado Livre" : selMkt === 'magalu' ? 'Autorizar Magalu' : "Integração em preparação")}
             {step==="connecting" && "Conectando…"}
             {step==="done"   && "Conta conectada!"}
           </h2>
@@ -327,7 +329,12 @@ function ConnectModal({ onClose, onConnect, demo, companyId }: { companyId: stri
             </div>
           )}
 
-          {!demo && step === "name" && mkt && <div className="stack-form"><h3>{mkt.label}</h3>{selMkt === 'mercadolivre' ? <><p>Você será encaminhado ao Mercado Livre para autorizar o acesso à sua conta.</p>{error && <p role="alert">{error}</p>}<button disabled={busy} style={btnPri} onClick={authorize}>{busy ? 'Abrindo autorização…' : 'Autorizar no Mercado Livre'}</button></> : <p>A integração com este marketplace ainda está em desenvolvimento.</p>}<button style={btnSec} onClick={onClose}>Fechar</button></div>}
+          {!demo && step === "name" && mkt && <div className="stack-form"><h3>{mkt.label}</h3>{selMkt === 'mercadolivre' || selMkt === 'magalu' ? <>
+            <p>Você será encaminhado ao {mkt.label} para autorizar o acesso à sua conta.</p>
+            {selMkt === 'magalu' && <><p>Selecione a organização da sua loja no ID Magalu. Solicitamos leitura de pedidos e entregas. A importação de pedidos ainda está em preparação.</p><p><a href="/termos" target="_blank" rel="noreferrer">Termos de uso</a> · <a href="/privacidade" target="_blank" rel="noreferrer">Privacidade</a></p></>}
+            {error && <p role="alert">{error}</p>}
+            <button disabled={busy} style={btnPri} onClick={authorize}>{busy ? 'Abrindo autorização…' : selMkt === 'magalu' ? 'Autorizar com o ID Magalu' : 'Autorizar no Mercado Livre'}</button>
+          </> : <p>A integração com este marketplace ainda está em desenvolvimento.</p>}<button style={btnSec} onClick={onClose}>Fechar</button></div>}
           {demo && step === "name" && mkt && (
             <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
               <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", background:mkt.bg, borderRadius:10 }}>

@@ -95,6 +95,17 @@ model OAuthAttempt {
   expiresAt DateTime
   @@index([expiresAt])
 }
+// Isolated from Mercado Livre: states cannot be completed by another provider.
+model MagaluOAuthAttempt {
+  stateHash String @id
+  sessionHash String
+  userId String
+  companyId String
+  codeCipher String?
+  denied Boolean @default(false)
+  expiresAt DateTime
+  @@index([expiresAt])
+}
 model Order {
   id String @id @default(uuid())
   accountId String
