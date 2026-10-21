@@ -1,29 +1,39 @@
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, randomBytes, createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { config } from 'dotenv'
 import { PrismaClient } from '@prisma/client'
+import argon2 from 'argon2'
 
 config({ path: fileURLToPath(new URL('../apps/api/.env', import.meta.url)) })
+if (process.env.NODE_ENV === 'production' || !['localhost', '127.0.0.1'].includes(new URL(process.env.DATABASE_URL).hostname)) throw new Error('Esta verificação exige um banco local de desenvolvimento.')
 const db = new PrismaClient()
 const createdUsers = []
 const createdCompanies = []
 const base = 'http://localhost:5173/api'
 async function request(path, { method = 'GET', body, cookie } = {}) {
-  const headers = {}
+  const headers = { Origin: 'http://localhost:5173' }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (cookie) headers.Cookie = cookie
   const response = await fetch(base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(10000) })
   return { status: response.status, body: await response.json(), cookie: response.headers.getSetCookie()[0]?.split(';')[0] }
+}
+async function localUser(name, email, password) {
+  // Isolated fixtures avoid dispatching mail to synthetic addresses. Signup and
+  // email verification are exercised through the authentication test suite.
+  const user = await db.user.create({ data: { name, email, passwordHash: await argon2.hash(password), emailVerifiedAt: new Date() } })
+  createdUsers.push(user.id)
+  const token = randomBytes(32).toString('hex')
+  await db.session.create({ data: { userId: user.id, tokenHash: createHash('sha256').update(token).digest('hex'), authVersion: 0, expiresAt: new Date(Date.now() + 3600_000) } })
+  return { status: 200, body: { user: { id: user.id, name, email } }, cookie: `omnimark_session=${token}` }
 }
 try {
   assert.equal((await fetch('http://localhost:5173/')).status, 200)
   assert.equal((await request('/auth/me')).status, 401)
   const password = randomUUID() + '!'
   const email = `smoke-${randomUUID()}@example.invalid`
-  const owner = await request('/auth/register', { method: 'POST', body: { name: 'Verificação temporária', email, password } })
-  if (owner.body.user?.id) createdUsers.push(owner.body.user.id)
-  assert.equal(owner.status, 201)
+  const owner = await localUser('Verificação temporária', email, password)
+  assert.equal(owner.status, 200)
   assert.ok(owner.cookie)
   assert.equal((await request('/auth/me', { cookie: owner.cookie })).body.user.id, owner.body.user.id)
   const company = await request('/companies', { method: 'POST', cookie: owner.cookie, body: { name: 'Empresa temporária de verificação', legalName: 'Razão social temporária', cnpj: '12345678000190' } })
@@ -37,9 +47,8 @@ try {
   assert.equal((await request('/auth/me', { method: 'PATCH', cookie: owner.cookie, body: { name: 'Nome atualizado' } })).status, 200)
   assert.equal((await request('/auth/me', { cookie: owner.cookie })).body.user.name, 'Nome atualizado')
   assert.deepEqual((await request(`/companies/${company.body.id}/accounts`, { cookie: owner.cookie })).body, [])
-  const outsider = await request('/auth/register', { method: 'POST', body: { name: 'Outro usuário temporário', email: `smoke-${randomUUID()}@example.invalid`, password } })
-  if (outsider.body.user?.id) createdUsers.push(outsider.body.user.id)
-  assert.equal(outsider.status, 201)
+  const outsider = await localUser('Outro usuário temporário', `smoke-${randomUUID()}@example.invalid`, password)
+  assert.equal(outsider.status, 200)
   for (const resource of ['accounts', 'dashboard']) {
     assert.equal((await request(`/companies/${company.body.id}/${resource}`, { cookie: outsider.cookie })).status, 404)
   }

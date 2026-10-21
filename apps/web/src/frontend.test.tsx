@@ -97,17 +97,17 @@ describe('Frontend integrado', () => {
     expect(localStorage.getItem('omnimark_session')).toBeNull()
   })
 
-  it('envia cadastro à API e usa a identidade retornada pelo servidor', async () => {
-    const fetch = mockFetch(() => ({ status: 201, body: { user } }))
-    const onLogin = vi.fn()
-    render(<SignupPage onLogin={onLogin} onBack={() => {}} />)
+  it('envia cadastro à API e exige confirmação de e-mail antes de entrar', async () => {
+    const fetch = mockFetch(() => ({ status: 201, body: { verificationRequired: true, email: user.email } }))
+    const onVerify = vi.fn()
+    render(<SignupPage onVerify={onVerify} onBack={() => {}} />)
     const action = userEvent.setup()
     await action.type(screen.getByPlaceholderText('Seu nome'), user.name)
     await action.type(screen.getByPlaceholderText('seu@email.com'), user.email)
     await action.type(screen.getByPlaceholderText('Mínimo 10 caracteres'), 'senha-longa-de-teste')
     await action.type(screen.getByPlaceholderText('Repita a senha'), 'senha-longa-de-teste')
     await action.click(screen.getByRole('button', { name: 'Criar conta' }))
-    await waitFor(() => expect(onLogin).toHaveBeenCalledWith({ ...user, isDemoUser: false }))
+    await waitFor(() => expect(onVerify).toHaveBeenCalledWith(user.email))
     expect(fetch.mock.calls[0][0]).toBe('/api/auth/register')
     expect(localStorage.getItem('omnimark_users')).toBeNull()
   })

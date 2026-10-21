@@ -1,11 +1,10 @@
 import { Icon } from './Icon'
 import { useState } from "react"
-import { api, type UserRecord } from "./api"
-import type { User } from "./auth"
+import { api } from "./api"
 import AuthLayout, { FormField, inputStyle, PasswordInput, submitBtn, linkStyle } from "./AuthLayout"
 
 interface Props {
-  onLogin: (user: User) => void
+  onVerify: (email: string) => void
   onBack: () => void
 }
 
@@ -16,7 +15,7 @@ function pwStrength(pw: string): { ok: boolean; msg: string }[] {
   ]
 }
 
-export default function SignupPage({ onLogin, onBack }: Props) {
+export default function SignupPage({ onVerify, onBack }: Props) {
   const [name,    setName]    = useState("")
   const [email,   setEmail]   = useState("")
   const [pw,      setPw]      = useState("")
@@ -47,8 +46,8 @@ export default function SignupPage({ onLogin, onBack }: Props) {
 
     setLoading(true); setErrors({})
     try {
-      const result = await api<{ user: UserRecord }>('/auth/register', { method: 'POST', body: JSON.stringify({ name: name.trim(), email: email.trim(), password: pw }) })
-      onLogin({ ...result.user, isDemoUser: false })
+      const result = await api<{ verificationRequired: true; email: string }>('/auth/register', { method: 'POST', body: JSON.stringify({ name: name.trim(), email: email.trim(), password: pw }) })
+      onVerify(result.email)
     } catch (error) { setErrors({ form: (error as Error).message }) }
     finally { setLoading(false) }
   }

@@ -40,11 +40,13 @@ node scripts/check-local.mjs
 
 A suíte cobre componentes e OAuth. `check-local.mjs` exige os serviços ativos, cria registros temporários e os remove ao terminar. Aguarde pelo menos um minuto entre execuções para respeitar o limite das rotas de autenticação.
 
+O smoke test exige banco em `localhost` ou `127.0.0.1` e recusa `NODE_ENV=production`. Ele provisiona usuários temporários já verificados diretamente no banco local e testa o login, sem enviar mensagens para endereços fictícios. Cadastro e confirmação são cobertos pelos testes automatizados de autenticação.
+
 ## Funcionalidades
 
 A lixeira em Contas permite que proprietários e administradores desconectem uma conta após confirmação. A operação remove do OmniMark a conexão, as credenciais e os pedidos importados (incluindo seus itens), sem alterar a conta ou os pedidos no marketplace. Durante uma sincronização em andamento, a remoção é bloqueada. Para importar novamente, é necessário reconectar a conta. A autorização no painel do marketplace não é revogada por essa remoção local.
 
-- Cadastro, login, logout, perfil e troca de senha.
+- Cadastro com confirmação de e-mail, login, logout, perfil, troca e recuperação de senha.
 - Sessões por cookie HttpOnly e senhas protegidas com Argon2.
 - Empresas com acesso por vínculo e papel.
 - OAuth do Mercado Livre com PKCE e tokens criptografados no servidor.
@@ -70,9 +72,28 @@ Configure as variáveis somente em runtime:
 
 Use `develop` na homologação e `main` em produção. O workflow `Checks` valida testes, compilação e build Docker. Para impedir publicação antes da validação, o pipeline de publicação deve aguardar esses checks; Auto Deploy por push, isoladamente, não garante essa ordem. A proteção da `main` e a integração desse bloqueio com a publicação ainda precisam ser configuradas.
 
-## Pendências
+## Confirmação de e-mail e recuperação de senha
 
-### Preparação da conexão Magalu
+No Resend, verifique o domínio e crie uma chave com permissão apenas de envio (`Sending access`), restrita ao domínio do projeto. Configure no aplicativo de stage do Coolify, somente em runtime:
+
+```text
+RESEND_API_KEY=<chave gerada no Resend>
+RESEND_FROM=OmniMark <acesso@omnimark.tech>
+```
+
+Mantenha `WEB_ORIGIN=https://teste.omnimark.tech` e a `TOKEN_ENCRYPTION_KEY` existente. A chave de envio não deve ser colocada no frontend, em argumentos de build, no Git ou em logs. Depois de salvar, faça redeploy.
+
+O cadastro cria uma conta pendente e enfileira um código de seis dígitos, válido por dez minutos e até cinco tentativas. Somente depois da confirmação e de um novo login é criada uma sessão. O botão de reenvio tem espera de 60 segundos; o servidor aplica esse limite por endereço, além dos limites por IP. Reenviar invalida o código anterior. Uma nova tentativa de cadastro com o mesmo e-mail pendente não altera a senha ou o nome existentes; se não souber a senha, use a recuperação.
+
+Usuários existentes não são removidos nem marcados como verificados sem comprovação. Suas sessões abertas permanecem válidas até expirar ou sair, e o próximo login pede a confirmação do e-mail. Empresas, permissões, pedidos e credenciais de marketplace são preservados.
+
+“Esqueci minha senha” responde da mesma forma para endereços existentes, desconhecidos ou em espera de reenvio. Para usuários cadastrados, enfileira um link de uso único por 30 minutos, com segredo de 256 bits no fragmento da URL. O painel remove o fragmento imediatamente e envia o segredo apenas por POST ao salvar a nova senha. A redefinição confirma o acesso à caixa de e-mail, encerra as sessões anteriores, invalida códigos/links pendentes e exige novo login. Uma versão de autenticação impede que um login concorrente com a senha antiga crie uma sessão utilizável após a redefinição.
+
+Os códigos são armazenados como HMAC vinculado ao usuário e à tentativa, e os links como hash. Mensagens na fila ficam criptografadas até o envio ou descarte. Um worker consulta a fila a cada cinco segundos, reserva cada mensagem de forma atômica, tenta até três envios e usa uma chave de idempotência fixa no Resend. Falhas registram somente o status HTTP, sem destinatário, código, link ou resposta do provedor. Payloads são apagados após aceitação pelo provedor ou três falhas; os registros técnicos da fila são removidos após sete dias e desafios expirados são limpos periodicamente. “Enviado” significa aceito pelo Resend, não comprovação de entrega na caixa de entrada.
+
+Validação em stage após configurar a chave: cadastre um e-mail de teste sob seu controle, confirme o código, entre, solicite recuperação, abra o link e defina outra senha. Confira que a sessão antiga foi encerrada, que a nova senha entra e que reutilizar o link falha. Não publique os códigos ou links. O envio real depende dessas variáveis e deve ser validado com a sua caixa de e-mail.
+
+## Preparação da conexão Magalu
 
 As rotas públicas `/termos` e `/privacidade` funcionam sem login, inclusive por acesso direto na imagem de produção. Os textos estão identificados como provisórios para revisão de Felipe Galkowski e descrevem o ambiente de homologação. O contato público informado pelo responsável é `felipegalk@outlook.com`; `LEGAL_CONTACT_EMAIL` permite substituí-lo em runtime. Antes de aceitar lojas de terceiros em produção, revise o conteúdo e a retenção real de logs/backups. Estas páginas não afirmam que o serviço já passou por revisão jurídica.
 
@@ -97,13 +118,13 @@ O consentimento solicita apenas leitura de pedidos/entregas e `choose_tenants=tr
 
 Documentação usada: [criação do cliente](https://developers.magalu.com/docs/first-steps/create-an-application/create-application/index.html), [consentimento e tokens](https://developers.magalu.com/docs/first-steps/create-an-application/authentication-authorization/index.html), [identificação de tenants no ID Magalu](https://developers.magalu.com/docs/apis_logistic/carrier/first-steps/become_carrier_integrator/index.html).
 
-### Demais pendências
+## Pendências
 
 A auditoria de dependências ainda aponta avisos na cadeia Prisma/deepmerge-ts e nas ferramentas de testes. A atualização dessas cadeias e a validação correspondente permanecem pendentes antes da liberação de produção.
 
 A importação consulta até 12 meses e 10 mil pedidos por conta, sem publicar uma lista parcial caso a paginação falhe. Os pedidos são atualizados por conta e identificador externo; uma falha de consulta preserva a sincronização anterior. Frete compartilhado sem conciliação, reembolsos ausentes e devoluções com estado não reconhecido aparecem como indisponíveis. O faturamento inclui o frete cobrado do comprador e não representa lucro ou saldo a receber.
 
-A sincronização ainda é manual e mantém a requisição aberta durante o processamento (até dez minutos), portanto grandes históricos podem ultrapassar o timeout do proxy. Processamento em fila, notificações automáticas e recuperação de senha por e-mail permanecem pendentes. A validação ponta a ponta com pedidos da conta conectada também está pendente.
+A sincronização de pedidos ainda é manual e mantém a requisição aberta durante o processamento (até dez minutos), portanto grandes históricos podem ultrapassar o timeout do proxy. Processamento de pedidos em fila e notificações automáticas de marketplace permanecem pendentes. A validação ponta a ponta com pedidos da conta conectada também está pendente.
 
 Para validar em homologação, conecte um vendedor de teste do Mercado Livre e realize compras com outro usuário de teste. Confira os IDs, totais, cancelamentos e reembolsos entre o Mercado Livre e o painel; repita a atualização para verificar que não há duplicação. Uma conta sem pedidos deve produzir uma lista vazia, sem carregar os dados fictícios da demonstração. Consulte a [documentação de testes do Mercado Livre](https://developers.mercadolivre.com.br/pt_br/realizacao-de-testes/realizacao-de-testes).
 

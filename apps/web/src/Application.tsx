@@ -8,6 +8,7 @@ import { Spinner, btnSec } from './ui'
 import LoginPage from './LoginPage'
 import SignupPage from './SignupPage'
 import ForgotPage from './RecoveryInfo'
+import VerifyEmailPage from './VerifyEmailPage'
 import OnboardingPage from './WelcomePage'
 import Overview from './Overview'
 import OrdersPage from './Orders'
@@ -23,7 +24,10 @@ export default function App() {
   const [sysDark, setSysDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
   const [user, setUser] = useState<User | null>(null)
   const [ready, setReady] = useState(false)
-  const [authScreen, setAuthScreen] = useState<'login' | 'signup' | 'forgot'>('login')
+  const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('reset_token'))
+  const [authScreen, setAuthScreen] = useState<'login' | 'signup' | 'forgot' | 'verify'>(resetToken ? 'forgot' : 'login')
+  const [verificationEmail, setVerificationEmail] = useState('')
+  const [authNotice, setAuthNotice] = useState('')
   const [companies, setCompanies] = useState<Company[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [orders, setOrders] = useState<Order[]>([])
@@ -48,14 +52,17 @@ export default function App() {
   const oauthState = oauthReturn?.state
   const oauthStarted = useRef(false)
   const [connectionMessage, setConnectionMessage] = useState('')
+  const [connectionStatus, setConnectionStatus] = useState<'info' | 'success' | 'error'>('info')
+  useEffect(() => { if (resetToken) window.history.replaceState(null, '', window.location.pathname + window.location.search) }, [resetToken])
   useEffect(() => { if (oauthState) window.history.replaceState(null, '', window.location.pathname + window.location.search) }, [oauthState])
   useEffect(() => {
     if (!oauthState || !user || user.isDemoUser || loading || !companies.length || oauthStarted.current) return
     oauthStarted.current = true
+    setConnectionStatus('info')
     setConnectionMessage(`Concluindo conexão com o ${oauthReturn!.label}…`)
     api<{ companyId: string }>(`/integrations/${oauthReturn!.provider}/complete`, { method: 'POST', body: JSON.stringify({ state: oauthState }) })
-      .then(result => { setCompanyId(result.companyId); setPage('accounts'); setReloadKey(key => key + 1); setConnectionMessage(oauthReturn!.provider === 'magalu' ? 'Conta conectada ao Magalu. A importação de pedidos está em preparação.' : 'Conta conectada ao Mercado Livre. Clique em Atualizar dados para importar seus pedidos.') })
-      .catch((failure: Error) => setConnectionMessage(failure.message))
+      .then(result => { setCompanyId(result.companyId); setPage('accounts'); setReloadKey(key => key + 1); setConnectionStatus('success'); setConnectionMessage(oauthReturn!.provider === 'magalu' ? 'Conta conectada ao Magalu. A importação de pedidos está em preparação.' : 'Conta conectada ao Mercado Livre. Clique em Atualizar dados para importar seus pedidos.') })
+      .catch((failure: Error) => { setConnectionStatus('error'); setConnectionMessage(failure.message) })
   }, [oauthState, user, loading, companies])
   const isDark = themeMode === 'dark' || (themeMode === 'system' && sysDark)
 
@@ -69,6 +76,7 @@ export default function App() {
   function setThemeMode(mode: ThemeMode) { setThemeModeRaw(mode); saveJSON('omnimark_theme', mode) }
 
   useEffect(() => {
+    if (resetToken) { setReady(true); return }
     const controller = new AbortController()
     api<{ user: UserRecord }>('/auth/me', { signal: controller.signal })
       .then(result => setUser({ ...result.user, isDemoUser: false }))
@@ -116,7 +124,7 @@ export default function App() {
   function handleLogin(next: User) {
     requestVersion.current++
     setOrders([])
-    setUser(next); setError(''); setCompanyError(''); setPage('overview')
+    setUser(next); setError(''); setAuthNotice(''); setCompanyError(''); setPage('overview')
     setCompanies(next.isDemoUser ? DEFAULT_COMPANIES.map(company => ({ ...company })) : [])
     setAccounts(next.isDemoUser ? INITIAL_ACCOUNTS.map(account => ({ ...account })) : [])
     setCompanyId(next.isDemoUser ? DEFAULT_COMPANIES[0].id : '')
@@ -148,11 +156,14 @@ export default function App() {
   }
 
   const company = companies.find(item => item.id === companyId)
+  function openVerification(email: string) { setVerificationEmail(email); setAuthNotice(''); setAuthScreen('verify') }
+  function backToLogin() { setResetToken(null); setError(''); setAuthScreen('login') }
   const demo = !!user?.isDemoUser
   return <ThemeContext.Provider value={{ isDark, mode: themeMode, setMode: setThemeMode }}>
     {!ready ? <Spinner /> : !user ? <>
       {error && <div className="app-alert" role="alert">{error}</div>}
-      {authScreen === 'signup' ? <SignupPage onLogin={handleLogin} onBack={() => setAuthScreen('login')} /> : authScreen === 'forgot' ? <ForgotPage onBack={() => setAuthScreen('login')} /> : <LoginPage onLogin={handleLogin} onSignup={() => setAuthScreen('signup')} onForgot={() => setAuthScreen('forgot')} />}
+      {authNotice && <div className="app-alert app-alert--success" role="status">{authNotice}</div>}
+      {authScreen === 'signup' ? <SignupPage onVerify={openVerification} onBack={backToLogin} /> : authScreen === 'verify' ? <VerifyEmailPage email={verificationEmail} onBack={backToLogin} onVerified={() => { setAuthNotice('E-mail confirmado. Entre com sua senha para continuar.'); setAuthScreen('login') }} /> : authScreen === 'forgot' ? <ForgotPage token={resetToken} onBack={backToLogin} /> : <LoginPage onLogin={handleLogin} onVerify={openVerification} onSignup={() => { setAuthNotice(''); setAuthScreen('signup') }} onForgot={() => { setAuthNotice(''); setAuthScreen('forgot') }} />}
     </> : <AuthContext.Provider value={{ user, updateUser }}>
       <div className="app-shell">
         <header className="app-header">
@@ -166,7 +177,7 @@ export default function App() {
         </header>
         {demo && <div className="demo-banner" role="status">Demonstração · Dados fictícios de 2025 · Alterações não são salvas no servidor.<button onClick={handleLogout}>Sair da demonstração</button></div>}
         <main className="app-content">
-          {connectionMessage && <div className="app-alert" role="status">{connectionMessage}</div>}
+          {connectionMessage && <div className={`app-alert app-alert--${connectionStatus}`} role={connectionStatus === 'error' ? 'alert' : 'status'}>{connectionMessage}</div>}
           {error && <div className="app-alert" role="alert">{error} <button style={btnSec} onClick={() => setReloadKey(key => key + 1)}>Tentar novamente</button></div>}
           {loading ? <Spinner /> : companyError ? <div className="app-alert" role="alert">{companyError} <button style={btnSec} onClick={() => setReloadKey(key => key + 1)}>Tentar novamente</button></div> : page === 'myaccount' ? <MyAccountPage /> : !company ? <OnboardingPage user={user} onCreate={addCompany} /> : page === 'overview' ? <Overview dataReady={demo || accounts.some(account => account.companyId === company.id && account.lastSync !== null)} accountsLoading={!demo && (accountRequest.companyId !== company.id || accountRequest.status === 'loading')} accountsError={!demo && accountRequest.companyId === company.id && accountRequest.status === 'error'} key={company.id} companyId={company.id} accounts={accounts} orders={demo ? ALL_ORDERS : orders.filter(order => order.companyId === company.id)} onAccounts={() => setPage('accounts')} /> : page === 'orders' ? <OrdersPage key={company.id} companyId={company.id} accounts={accounts} orders={demo ? ALL_ORDERS : orders.filter(order => order.companyId === company.id)} /> : <AccountsPage key={company.id} canEdit={company.canEdit} companyId={company.id} accounts={accounts} setAccounts={setAccounts} onSynced={() => setReloadKey(key => key + 1)} onDisconnected={id => { setOrders(previous => previous.filter(order => order.accountId !== id)); setConnectionMessage('Conta desconectada do OmniMark.'); if (!demo) setReloadKey(key => key + 1) }} />}
         </main>

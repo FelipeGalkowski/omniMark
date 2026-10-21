@@ -5,8 +5,8 @@ import cookie from '@fastify/cookie'
 import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
 import { PrismaClient, Prisma } from '@prisma/client'
-import { randomBytes, createHash } from 'node:crypto'
-import argon2 from 'argon2'
+import { registerAuthentication } from './authentication.js'
+import { registerEmailWorker } from './account-email.js'
 import { z } from 'zod'
 import { registerMercadoLivre } from './mercadolivre.js'
 import { registerMagalu } from './magalu.js'
@@ -27,22 +27,8 @@ await app.register(helmet, { contentSecurityPolicy: { directives: {
 await app.register(rateLimit, { max: 100, timeWindow: '1 minute' })
 const secure = process.env.NODE_ENV === 'production'
 const cookieName = secure ? '__Host-omnimark_session' : 'omnimark_session'
-const hash = (value: string) => createHash('sha256').update(value).digest('hex')
-const publicUser = (u: { id: string; name: string; email: string }) => ({ id: u.id, name: u.name, email: u.email })
-async function newSession(userId: string, reply: any) {
-  const token = randomBytes(32).toString('hex')
-  const expiresAt = new Date(Date.now() + 7 * 86400_000)
-  await db.session.create({ data: { userId, tokenHash: hash(token), expiresAt } })
-  reply.setCookie(cookieName, token, { httpOnly: true, secure, sameSite: 'lax', path: '/', expires: expiresAt })
-}
-async function authenticated(req: any, reply: any) {
-  const token = req.cookies[cookieName]
-  if (!token) return reply.code(401).send({ error: 'Não autenticado' })
-  const session = await db.session.findUnique({ where: { tokenHash: hash(token) }, include: { user: true } })
-  if (!session || session.expiresAt < new Date()) return reply.code(401).send({ error: 'Sessão inválida ou expirada' })
-  req.currentUser = session.user
-}
-const credentials = z.object({ email: z.string().email().max(254).transform(s => s.trim().toLowerCase()), password: z.string().min(10).max(128) })
+const authenticated = registerAuthentication(app, db, { origin, cookieName, secure })
+registerEmailWorker(app, db)
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof z.ZodError) return reply.code(400).send({ error: 'Dados inválidos', details: error.flatten() })
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return reply.code(409).send({ error: 'Este registro já existe.' })
@@ -52,41 +38,6 @@ app.setErrorHandler((error, _req, reply) => {
   return reply.code(500).send({ error: 'Erro interno' })
 })
 app.get('/health', async () => ({ status: 'ok' }))
-app.post('/auth/register', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (req, reply) => {
-  const input = credentials.extend({ name: z.string().trim().min(2).max(120) }).parse(req.body)
-  if (await db.user.findUnique({ where: { email: input.email } })) return reply.code(409).send({ error: 'E-mail já cadastrado' })
-  const user = await db.user.create({ data: { name: input.name, email: input.email, passwordHash: await argon2.hash(input.password) } })
-  await newSession(user.id, reply)
-  return reply.code(201).send({ user: publicUser(user) })
-})
-app.post('/auth/login', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (req, reply) => {
-  const input = credentials.parse(req.body)
-  const user = await db.user.findUnique({ where: { email: input.email } })
-  if (!user || !(await argon2.verify(user.passwordHash, input.password))) return reply.code(401).send({ error: 'Credenciais inválidas' })
-  await newSession(user.id, reply)
-  return { user: publicUser(user) }
-})
-app.get('/auth/me', { preHandler: authenticated }, async (req: any) => ({ user: publicUser(req.currentUser) }))
-app.patch('/auth/me', { preHandler: authenticated }, async (req: any) => {
-  const input = z.object({ name: z.string().trim().min(2).max(120) }).parse(req.body)
-  const user = await db.user.update({ where: { id: req.currentUser.id }, data: input })
-  return { user: publicUser(user) }
-})
-app.patch('/auth/password', { preHandler: authenticated, config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (req: any, reply) => {
-  const input = z.object({ currentPassword: z.string().min(1).max(128), password: z.string().min(10).max(128) }).parse(req.body)
-  if (!(await argon2.verify(req.currentUser.passwordHash, input.currentPassword))) return reply.code(400).send({ error: 'Senha atual incorreta.' })
-  const passwordHash = await argon2.hash(input.password)
-  await db.$transaction([
-    db.user.update({ where: { id: req.currentUser.id }, data: { passwordHash } }),
-    db.session.deleteMany({ where: { userId: req.currentUser.id, tokenHash: { not: hash(req.cookies[cookieName]) } } }),
-  ])
-  return { ok: true }
-})
-app.post('/auth/logout', { preHandler: authenticated }, async (req: any, reply) => {
-  await db.session.deleteMany({ where: { tokenHash: hash(req.cookies[cookieName]) } })
-  reply.clearCookie(cookieName, { path: '/' })
-  return { ok: true }
-})
 const companyInput = z.object({ name: z.string().trim().min(2).max(120), legalName: z.string().trim().max(200).nullable().optional(), cnpj: z.string().regex(/^\d{14}$/).nullable().optional() })
 app.get('/companies', { preHandler: authenticated }, async (req: any) => {
   const records = await db.company.findMany({ where: { memberships: { some: { userId: req.currentUser.id } } }, include: { _count: { select: { accounts: true } }, memberships: { where: { userId: req.currentUser.id }, select: { role: true } } }, orderBy: { createdAt: 'desc' } })

@@ -10,18 +10,59 @@ model User {
   name String
   email String @unique
   passwordHash String
+  emailVerifiedAt DateTime?
+  authVersion Int @default(0)
   createdAt DateTime @default(now())
   memberships CompanyMember[]
   sessions Session[]
+  emailChallenges EmailChallenge[]
+  emailDeliveries EmailDelivery[]
 }
 model Session {
   id String @id @default(uuid())
   tokenHash String @unique
+  authVersion Int @default(0)
   userId String
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   createdAt DateTime @default(now())
   @@index([userId])
+}
+enum EmailPurpose {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+model EmailChallenge {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose EmailPurpose
+  tokenHash String @unique
+  attempts Int @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  delivery EmailDelivery?
+  @@unique([userId, purpose])
+  @@index([expiresAt])
+}
+model EmailDelivery {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  challengeId String? @unique
+  challenge EmailChallenge? @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  payloadCipher String?
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  lockId String?
+  lockUntil DateTime?
+  sentAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([nextAttemptAt])
+}
+model EmailThrottle {
+  key String @id
+  nextAllowedAt DateTime
 }
 model Company {
   id String @id @default(uuid())

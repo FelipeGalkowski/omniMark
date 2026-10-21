@@ -92,6 +92,10 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .demo-banner button { background: none; border: 0; color: var(--t1); text-decoration: underline; cursor: pointer; white-space: nowrap; }
 .app-alert { margin: 16px 28px; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--sf); color: #DC2626; border: 1px solid #FCA5A5; border-radius: 10px; font-size: 13px; }
 .form-error { margin: 0; color: #DC2626 !important; font-size: 13px; line-height: 1.5; }
+.app-alert--success, .auth-feedback { color: #166534; border: 1px solid #86EFAC; background: #F0FDF4; }
+.auth-feedback { border-radius: 8px; padding: 12px; font-size: 12px; line-height: 1.7; }
+.app-alert--info { color: var(--t2); border-color: var(--bd); background: var(--sf2); }
+[data-theme="dark"] .app-alert--success, [data-theme="dark"] .auth-feedback { color: #BBF7D0; border-color: #166534; background: #13291F; }
 [data-theme="dark"] .form-error { color: #FDA4AF !important; }
 .welcome-page { display: flex; align-items: center; justify-content: center; min-height: 100%; padding: 32px 16px; }
 .welcome-card { width: 100%; max-width: 480px; padding: 32px; border: 1px solid var(--bd); border-radius: 16px; box-shadow: 0 4px 24px var(--shd); background: var(--sf); }

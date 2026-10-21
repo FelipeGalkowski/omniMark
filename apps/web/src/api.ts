@@ -21,6 +21,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export type UserRecord = Omit<User, 'isDemoUser'>
+export type LoginResult = { user: UserRecord; verificationRequired?: false } | { verificationRequired: true; email: string }
 export type CompanyRecord = { id: string; name: string; legalName?: string | null; cnpj?: string | null; _count?: { accounts: number }; role?: 'OWNER' | 'ADMIN' | 'VIEWER' }
 export function companyFromApi(record: CompanyRecord): Company {
   return { id: record.id, name: record.name, razaoSocial: record.legalName ?? undefined, cnpj: record.cnpj ? formatCNPJ(record.cnpj) : undefined, accountCount: record._count?.accounts, canEdit: record.role !== 'VIEWER' }

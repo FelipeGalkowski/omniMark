@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { api, type UserRecord } from "./api"
+import { api, type LoginResult } from "./api"
 import type { User } from "./auth"
 import AuthLayout, { FormField, inputStyle, PasswordInput, submitBtn, linkStyle } from "./AuthLayout"
 
@@ -7,9 +7,10 @@ interface Props {
   onLogin: (user: User) => void
   onSignup: () => void
   onForgot: () => void
+  onVerify?: (email: string) => void
 }
 
-export default function LoginPage({ onLogin, onSignup, onForgot }: Props) {
+export default function LoginPage({ onLogin, onSignup, onForgot, onVerify }: Props) {
   const [email,    setEmail]    = useState("")
   const [password, setPassword] = useState("")
   const [showPw,   setShowPw]   = useState(false)
@@ -27,7 +28,13 @@ export default function LoginPage({ onLogin, onSignup, onForgot }: Props) {
 
     setLoading(true); setErrors({})
     try {
-      const result = await api<{ user: UserRecord }>('/auth/login', { method: 'POST', body: JSON.stringify({ email: email.trim(), password }) })
+      const result = await api<LoginResult>('/auth/login', { method: 'POST', body: JSON.stringify({ email: email.trim(), password }) })
+      if (result.verificationRequired) {
+        setPassword('')
+        if (onVerify) onVerify(result.email)
+        else setErrors({ form: 'Confirme seu e-mail antes de entrar.' })
+        return
+      }
       onLogin({ ...result.user, isDemoUser: false })
     } catch (error) { setErrors({ form: (error as Error).message }) }
     finally { setLoading(false) }
