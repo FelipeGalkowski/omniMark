@@ -1,9 +1,23 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
+import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { vault } from './mercadolivre.js'
 import { magaluTenant, MAGALU_SCOPES } from './magalu.js'
 import { SyncError } from './order-sync.js'
 import type { SyncExecution } from './sync-contract.js'
+
+const diagnosticFields = new Set(['status', 'purchased_at__gte', 'purchased_at__lte', 'updated_at__gte', 'updated_at__lte', 'code', '_limit', '_offset', '_sort'])
+const validationError = z.object({ detail: z.array(z.object({ loc: z.array(z.union([z.string(), z.number()])) })) })
+const oauthError = z.object({ error: z.enum(['invalid_grant', 'invalid_client', 'invalid_request', 'unauthorized_client', 'unsupported_grant_type', 'invalid_scope']) })
+function magaluDiagnostic(response: Response, operation: 'orders.list' | 'oauth.refresh', payload: unknown) {
+  const validation = validationError.safeParse(payload)
+  const fields = validation.success ? [...new Set(validation.data.detail.flatMap(issue => issue.loc
+    .filter((part): part is string => typeof part === 'string').flatMap(part => part.split(',')).filter(part => diagnosticFields.has(part))))].sort() : []
+  const oauth = operation === 'oauth.refresh' ? oauthError.safeParse(payload) : null
+  // Allowlisted metadata only: never copy messages, inputs, tokens, URLs or buyer data.
+  return { reference: randomUUID(), operation: `magalu.${operation}`, providerStatus: response.status,
+    detail: fields.length ? `Campos rejeitados: ${fields.join(', ')}.` : oauth?.success ? `OAuth: ${oauth.data.error}.` : 'Resposta recusada pela API Magalu.' }
+}
 
 const integer = z.number().int().nonnegative().safe()
 const amount = z.object({ currency: z.literal('BRL'), normalizer: z.number().int().positive().safe(), total: integer })
@@ -93,7 +107,7 @@ export async function syncMagaluAccount(db: PrismaClient, accountId: string, req
     if (!response.ok) {
       const body = await response.json().catch(() => null)
       const revoked = body?.error === 'invalid_grant'
-      throw new SyncError(revoked ? 409 : 502, revoked ? 'A autorização Magalu expirou ou foi revogada. Reconecte sua loja.' : 'Não foi possível renovar a autorização Magalu. Uma nova tentativa será feita automaticamente.', revoked)
+      throw new SyncError(revoked ? 409 : 502, revoked ? 'A autorização Magalu expirou ou foi revogada. Reconecte sua loja.' : 'Não foi possível renovar a autorização Magalu. Uma nova tentativa será feita automaticamente.', revoked, magaluDiagnostic(response, 'oauth.refresh', body))
     }
     const result = tokenResponse.parse(await response.json())
     if (magaluTenant(result.access_token) !== account.externalId || (result.scope !== undefined && !MAGALU_SCOPES.every(scope => result.scope!.split(/\s+/).includes(scope)))) throw new SyncError(409, 'A autorização Magalu não corresponde à loja ou às permissões necessárias. Reconecte a loja.', true)
@@ -115,11 +129,15 @@ export async function syncMagaluAccount(db: PrismaClient, accountId: string, req
       if (response.status === 429) {
         const value = response.headers.get('retry-after') ?? ''
         const retryMs = /^\d+$/.test(value) ? Number(value) * 1000 : Math.max(0, Date.parse(value) - Date.now()) || 0
-        throw new SyncError(429, 'O Magalu limitou as consultas. A atualização será repetida automaticamente.', false, undefined, retryMs)
+        throw new SyncError(429, 'O Magalu limitou as consultas. A atualização será repetida automaticamente.', false, magaluDiagnostic(response, 'orders.list', null), retryMs)
       }
       if (response.status >= 500 && attempt < 2) { await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 1000)); continue }
-      if (!response.ok) throw new SyncError(response.status === 401 || response.status === 403 ? 409 : 502,
-        response.status === 403 ? 'O Magalu recusou acesso aos pedidos. Reconecte a loja e autorize a leitura dos pedidos e entregas.' : 'Não foi possível consultar os pedidos Magalu. A atualização será repetida automaticamente.', response.status === 401 || response.status === 403)
+      if (!response.ok) {
+        const body = await response.json().catch(() => null)
+        throw new SyncError(response.status === 401 || response.status === 403 ? 409 : 502,
+          response.status === 403 ? 'O Magalu recusou acesso aos pedidos. Reconecte a loja e autorize a leitura dos pedidos e entregas.' : 'Não foi possível consultar os pedidos Magalu. A atualização será repetida automaticamente.', response.status === 401 || response.status === 403,
+          magaluDiagnostic(response, 'orders.list', body))
+      }
       return response.json()
     }
     throw new SyncError(502, 'Não foi possível atualizar os pedidos Magalu.')

@@ -106,3 +106,20 @@ it('does not write orders after losing its lease or when the token belongs to an
   await expect(syncMagaluAccount(other.db, 'account', request, { lease: 'lease' })).rejects.toMatchObject({ reconnect: true })
   expect(request).not.toHaveBeenCalled()
 })
+
+it.each([400, 404, 422])('retains the original HTTP %i in safe order diagnostics without publishing partial imports', async status => {
+  const { db } = database()
+  const request = vi.fn(async () => response({ detail: [{ loc: ['query', 'purchased_at__gte', 'private-field'], msg: 'private customer@example.test token', input: jwt(), type: 'private' }], customer: { name: 'private customer' } }, status))
+  const failure = await syncMagaluAccount(db, 'account', request, { lease: 'lease' }).catch(error => error)
+  expect(failure).toMatchObject({ code: 502, reconnect: false, diagnostic: { reference: expect.any(String), operation: 'magalu.orders.list', providerStatus: status, detail: 'Campos rejeitados: purchased_at__gte.' } })
+  expect(JSON.stringify(failure.diagnostic)).not.toMatch(/private|customer|header\./)
+  expect(db.$transaction).not.toHaveBeenCalled()
+})
+
+it('diagnoses expired refresh authorization without copying provider messages or secrets', async () => {
+  const { db } = database(true)
+  const failure = await syncMagaluAccount(db, 'account', vi.fn(async () => response({ error: 'invalid_grant', error_description: 'private-refresh customer@example.test' }, 400)), { lease: 'lease' }).catch(error => error)
+  expect(failure).toMatchObject({ reconnect: true, diagnostic: { operation: 'magalu.oauth.refresh', providerStatus: 400, detail: 'OAuth: invalid_grant.' } })
+  expect(JSON.stringify(failure.diagnostic)).not.toMatch(/private|customer/)
+  expect(db.$transaction).not.toHaveBeenCalled()
+})
