@@ -20,6 +20,7 @@ it('makes exactly one read-only request and returns only safe diagnostics', asyn
   expect(request.mock.calls[0]).toEqual([expect.stringContaining('https://api.magalu.com/seller/v1/orders?'), expect.objectContaining({ redirect: 'error' })])
   expect(result).toMatchObject({ providerStatus: 422, detail: 'Campos rejeitados: _limit. Regras: INVALID_PARAMETER_VALUE, UNPROCESSABLE_ENTITY.' })
   expect(JSON.stringify(result)).not.toMatch(/private|customer|header\./)
+  expect(result).toHaveProperty('providerMessage', '[redacted] [email]')
 })
 it('refuses other environments before reading any account', async () => {
   const { db } = database(), request = vi.fn()

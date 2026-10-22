@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { vault } from './mercadolivre.js'
 import { magaluTenant } from './magalu.js'
 import { magaluDiagnostic } from './magalu-sync.js'
+import { magaluDiagnosticMessage } from './magalu-diagnostic-message.js'
 
 class DiagnosticError extends Error {}
 
@@ -15,7 +16,7 @@ export async function diagnoseMagalu(db: PrismaClient, request: typeof fetch = f
   if (accounts.length !== 1) throw new DiagnosticError('O diagnóstico precisa de exatamente uma conta Magalu conectada no stage.')
   const account = accounts[0]
   if (!account.credentials || account.credentials.expiresAt.getTime() <= Date.now() + 30000) throw new DiagnosticError('Aguarde a renovação automática da autorização Magalu antes de repetir o diagnóstico.')
-  const tokens = z.object({ accessToken: z.string().min(1) }).parse(JSON.parse(vault(process.env.TOKEN_ENCRYPTION_KEY ?? '').open(account.credentials.tokenCipher)))
+  const tokens = z.object({ accessToken: z.string().min(1), refreshToken: z.string().optional() }).parse(JSON.parse(vault(process.env.TOKEN_ENCRYPTION_KEY ?? '').open(account.credentials.tokenCipher)))
   if (magaluTenant(tokens.accessToken) !== account.externalId) throw new DiagnosticError('A autorização não corresponde à loja conectada.')
   const to = new Date(), historyStart = new Date(to)
   historyStart.setUTCFullYear(historyStart.getUTCFullYear() - 1)
@@ -28,7 +29,9 @@ export async function diagnoseMagalu(db: PrismaClient, request: typeof fetch = f
     await response.body?.cancel()
     return { operation: 'magalu.orders.list', providerStatus: response.status, detail: 'Consulta aceita pela Magalu. Diagnóstico concluído sem importar dados.' }
   }
-  return magaluDiagnostic(response, 'orders.list', await response.json().catch(() => null))
+  const payload = await response.json().catch(() => null)
+  return { ...magaluDiagnostic(response, 'orders.list', payload), providerMessage: magaluDiagnosticMessage(payload,
+    [tokens.accessToken, tokens.refreshToken ?? '', account.externalId, process.env.MAGALU_CLIENT_ID ?? '', process.env.MAGALU_CLIENT_SECRET ?? '', process.env.TOKEN_ENCRYPTION_KEY ?? '', process.env.DATABASE_URL ?? '']) }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
