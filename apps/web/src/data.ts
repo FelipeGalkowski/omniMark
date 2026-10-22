@@ -73,7 +73,7 @@ export const DEMO_NOW = new Date(2025, 11, 31, 23, 59, 59)
 
 export function initialDateRange(demo: boolean) {
   const now = demo ? DEMO_NOW : new Date()
-  return { from: new Date(now.getFullYear(), demo ? 0 : now.getMonth(), 1), to: new Date(now.getFullYear(), now.getMonth() + 1, 0) }
+  return { from: new Date(now.getFullYear(), demo ? 0 : now.getMonth(), 1), to: new Date(now.getFullYear(), now.getMonth(), now.getDate()) }
 }
 
 

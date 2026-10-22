@@ -22,13 +22,13 @@ interface DateRangePickerProps {
 
 function shortcutRange(type: "thisMonth" | "lastMonth" | "last30", now: Date): DateRangeValue {
   if (type === "thisMonth") {
-    return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: new Date(now.getFullYear(), now.getMonth() + 1, 0) }
+    return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: new Date(now.getFullYear(), now.getMonth(), now.getDate()) }
   }
   if (type === "lastMonth") {
     return { from: new Date(now.getFullYear(), now.getMonth() - 1, 1), to: new Date(now.getFullYear(), now.getMonth(), 0) }
   }
-  const to = new Date(now); to.setHours(23,59,59)
-  const from = new Date(now); from.setDate(from.getDate() - 29); from.setHours(0,0,0)
+  const to = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const from = new Date(to); from.setDate(from.getDate() - 29)
   return { from, to }
 }
 
@@ -38,6 +38,8 @@ function fmtShort(d: Date) {
 
 export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
   const { user } = useAuth()
+  const now = user.isDemoUser ? DEMO_NOW : new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const [open, setOpen] = useState(false)
   const [local, setLocal] = useState<DateRange>({ from: value.from, to: value.to })
   const [mFrom, setMFrom] = useState(new Date(value.from.getFullYear(), value.from.getMonth(), 1))
@@ -61,7 +63,7 @@ export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
   }
 
   function handleApply() {
-    if (local.from && local.to) { onChange({ from: local.from, to: local.to }); setOpen(false) }
+    if (local.from && local.to && local.from <= today && local.to <= today) { onChange({ from: local.from, to: local.to }); setOpen(false) }
   }
 
   const label = `${fmtShort(value.from)} – ${fmtShort(value.to)}`
@@ -86,9 +88,9 @@ export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
               ))}
             </div>
             <div style={{ padding:"12px 8px", display:"flex", gap:4, flexWrap:"wrap" }}>
-              <DayPicker components={{ Chevron: ({ orientation, className }) => <Icon name={orientation === "left" ? "chevronLeft" : orientation === "right" ? "chevronRight" : "chevronDown"} size={18} className={className} /> }} mode="range" selected={local} onSelect={r => r && setLocal(r)} month={mFrom} onMonthChange={setMFrom} locale={ptBR} numberOfMonths={1} />
+              <DayPicker components={{ Chevron: ({ orientation, className }) => <Icon name={orientation === "left" ? "chevronLeft" : orientation === "right" ? "chevronRight" : "chevronDown"} size={18} className={className} /> }} mode="range" selected={local} onSelect={r => r && setLocal(r)} month={mFrom} onMonthChange={setMFrom} disabled={{ after: today }} endMonth={today} today={today} locale={ptBR} numberOfMonths={1} />
               <div style={{ width:1, background:"var(--bd)", alignSelf:"stretch" }} />
-              <DayPicker components={{ Chevron: ({ orientation, className }) => <Icon name={orientation === "left" ? "chevronLeft" : orientation === "right" ? "chevronRight" : "chevronDown"} size={18} className={className} /> }} mode="range" selected={local} onSelect={r => r && setLocal(r)} month={mTo} onMonthChange={setMTo} locale={ptBR} numberOfMonths={1} />
+              <DayPicker components={{ Chevron: ({ orientation, className }) => <Icon name={orientation === "left" ? "chevronLeft" : orientation === "right" ? "chevronRight" : "chevronDown"} size={18} className={className} /> }} mode="range" selected={local} onSelect={r => r && setLocal(r)} month={mTo} onMonthChange={setMTo} disabled={{ after: today }} endMonth={today} today={today} locale={ptBR} numberOfMonths={1} />
             </div>
           </div>
           <div style={{ borderTop:"1px solid var(--bd)", padding:"10px 16px", display:"flex", justifyContent:"flex-end", gap:8 }}>
