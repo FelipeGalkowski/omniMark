@@ -95,7 +95,7 @@ Validação em stage após configurar a chave: cadastre um e-mail de teste sob s
 
 ## Sincronização automática de pedidos
 
-O servidor inicia a primeira importação após conectar ou reconectar uma loja. Depois de uma importação bem-sucedida, agenda a próxima para cinco minutos depois. Não é preciso manter o navegador aberto nem configurar cron no Coolify. O botão Atualizar dados solicita uma execução adicional e responde HTTP 202; a requisição não fica aberta durante a importação. A tela consulta o andamento a cada 15 segundos enquanto está visível e só relê os pedidos quando a última importação muda.
+O servidor inicia a primeira importação após conectar ou reconectar uma loja. Depois de uma importação bem-sucedida, agenda a próxima para cinco minutos depois. Não é preciso manter o navegador aberto nem configurar cron no Coolify. A tela consulta o andamento a cada 15 segundos enquanto está visível e só relê os pedidos quando a última importação muda. O botão Renomear permite organizar as contas pelo nome, sem solicitar consultas ao marketplace.
 
 O padrão já funciona sem novas variáveis. Para personalizar no Coolify, use somente runtime:
 
@@ -110,6 +110,18 @@ O intervalo aceita de 2 a 60 minutos e a concorrência de 1 a 4 lojas por proces
 Agendamentos e contadores de falhas ficam no PostgreSQL. Cada execução reserva atomicamente a loja por até 15 minutos, e a gravação confere o proprietário da reserva antes de publicar dados. Outra instância não importa a mesma loja simultaneamente. Após uma queda abrupta, o trabalho pendente volta a ser elegível quando a reserva expira. As importações têm limites de tempo e volume; falhas preservam a importação anterior.
 
 Os conectores atuais importam inicialmente até 12 meses e depois consultam pedidos modificados com sobreposição de 15 minutos. Uma reconciliação completa diária também revisita mudanças de entrega/devolução que não atualizem o pedido. A normalização mantém a cobertura do histórico em importações incrementais.
+
+### Diagnóstico Magalu no stage
+
+Nos Runtime Logs do Coolify, procure `ORDER_SYNC_FAILED` com `marketplace: MAGALU`. O diagnóstico preserva o status HTTP do provedor, campos e códigos de erro reconhecidos nos formatos `detail` e `details`, além do `X-Request-ID` quando for um UUID válido. Mensagens livres, valores enviados e dados de compradores não são registrados.
+
+Para reproduzir somente a primeira consulta da sincronização, execute no terminal do container do stage:
+
+```sh
+node /app/apps/api/dist/magalu-diagnose.js
+```
+
+O comando exige `WEB_ORIGIN=https://teste.omnimark.tech` e exatamente uma conta Magalu conectada. Faz no máximo um GET, descarta pedidos retornados e exibe somente o diagnóstico seguro. Não importa pedidos, não altera registros ou agendamentos e não renova tokens. Se a autorização estiver vencida, aguarde a renovação pela rotina automática. Uma resposta 200 confirma apenas que a primeira consulta foi aceita, sem validar a importação completa.
 
 `apps/api/src/sync-contract.ts` define o contrato dos conectores. Para Shopee, Amazon ou outro canal, implemente a leitura, normalização, renovação e persistência e registre o adaptador em `sync-adapters.ts`. Ele passa a usar o mesmo agendador, reservas e tentativas automaticamente. Shopee e Amazon continuam sem conector real; não são anunciados como sincronizados nem consultados por um adaptador fictício. Cada conector deve salvar somente após ler todas as páginas e validar a identidade da loja.
 

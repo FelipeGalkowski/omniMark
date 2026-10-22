@@ -123,3 +123,17 @@ it('diagnoses expired refresh authorization without copying provider messages or
   expect(JSON.stringify(failure.diagnostic)).not.toMatch(/private|customer/)
   expect(db.$transaction).not.toHaveBeenCalled()
 })
+
+it('reads standard Magalu details and request ID without logging arbitrary fields, rules, messages or inputs', async () => {
+  const { db } = database()
+  const providerReference = 'cdd729b7-5407-4c55-a02c-91f67c238435'
+  const request = vi.fn(async () => new Response(JSON.stringify({ slug: 'UNPROCESSABLE_ENTITY', message: 'private message', details: [
+    { field: 'query._limit', slug: 'INVALID_PARAMETER_VALUE', message: jwt(), input: 'private customer' },
+    { field: 'private-field', slug: 'PRIVATE_SECRET', message: 'private-refresh' },
+  ] }), { status: 422, headers: { 'x-request-id': providerReference } }))
+  const failure = await syncMagaluAccount(db, 'account', request, { lease: 'lease' }).catch(error => error)
+  expect(failure.diagnostic).toEqual({ reference: providerReference, operation: 'magalu.orders.list', providerStatus: 422,
+    detail: 'Campos rejeitados: _limit. Regras: INVALID_PARAMETER_VALUE, UNPROCESSABLE_ENTITY.' })
+  expect(JSON.stringify(failure.diagnostic)).not.toMatch(/private|PRIVATE|header\./)
+  expect(db.$transaction).not.toHaveBeenCalled()
+})

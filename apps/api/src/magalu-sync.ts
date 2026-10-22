@@ -6,17 +6,24 @@ import { magaluTenant, MAGALU_SCOPES } from './magalu.js'
 import { SyncError } from './order-sync.js'
 import type { SyncExecution } from './sync-contract.js'
 
-const diagnosticFields = new Set(['status', 'purchased_at__gte', 'purchased_at__lte', 'updated_at__gte', 'updated_at__lte', 'code', '_limit', '_offset', '_sort'])
-const validationError = z.object({ detail: z.array(z.object({ loc: z.array(z.union([z.string(), z.number()])) })) })
+const diagnosticFields = new Set(['status', 'purchased_at__gte', 'purchased_at__lte', 'updated_at__gte', 'updated_at__lte', 'code', '_limit', '_offset', '_sort', 'X-Channel-Id', 'x-channel-id'])
+const diagnosticSlugs = new Set(['BAD_REQUEST', 'UNPROCESSABLE_ENTITY', 'INVALID_PARAMETER', 'INVALID_PARAMETER_VALUE', 'UNAUTHORIZED', 'FORBIDDEN', 'NOT_FOUND', 'TOO_MANY_REQUESTS', 'SERVER_ERROR', 'BAD_GATEWAY', 'SERVICE_UNAVAILABLE', 'GATEWAY_TIMEOUT'])
+const validationError = z.object({ detail: z.array(z.object({ loc: z.array(z.union([z.string(), z.number()])) })).optional(),
+  slug: z.string().optional(), details: z.array(z.object({ field: z.string().optional(), slug: z.string().optional() })).optional() })
 const oauthError = z.object({ error: z.enum(['invalid_grant', 'invalid_client', 'invalid_request', 'unauthorized_client', 'unsupported_grant_type', 'invalid_scope']) })
-function magaluDiagnostic(response: Response, operation: 'orders.list' | 'oauth.refresh', payload: unknown) {
+export function magaluDiagnostic(response: Response, operation: 'orders.list' | 'oauth.refresh', payload: unknown) {
   const validation = validationError.safeParse(payload)
-  const fields = validation.success ? [...new Set(validation.data.detail.flatMap(issue => issue.loc
-    .filter((part): part is string => typeof part === 'string').flatMap(part => part.split(',')).filter(part => diagnosticFields.has(part))))].sort() : []
+  const locations = validation.success ? [...(validation.data.detail ?? []).flatMap(issue => issue.loc.filter((part): part is string => typeof part === 'string')),
+    ...(validation.data.details ?? []).flatMap(issue => issue.field ? [issue.field] : [])] : []
+  const fields = [...new Set(locations.flatMap(part => part.split(/[,.\s]+/)).filter(part => diagnosticFields.has(part)))].sort()
+  const slugs = validation.success ? [...new Set([validation.data.slug, ...(validation.data.details ?? []).map(issue => issue.slug)]
+    .filter((slug): slug is string => !!slug && diagnosticSlugs.has(slug)))].sort() : []
   const oauth = operation === 'oauth.refresh' ? oauthError.safeParse(payload) : null
   // Allowlisted metadata only: never copy messages, inputs, tokens, URLs or buyer data.
-  return { reference: randomUUID(), operation: `magalu.${operation}`, providerStatus: response.status,
-    detail: fields.length ? `Campos rejeitados: ${fields.join(', ')}.` : oauth?.success ? `OAuth: ${oauth.data.error}.` : 'Resposta recusada pela API Magalu.' }
+  const reason = [fields.length ? `Campos rejeitados: ${fields.join(', ')}.` : '', slugs.length ? `Regras: ${slugs.join(', ')}.` : ''].filter(Boolean).join(' ')
+  const providerReference = z.string().uuid().safeParse(response.headers.get('x-request-id'))
+  return { reference: providerReference.success ? providerReference.data : randomUUID(), operation: `magalu.${operation}`, providerStatus: response.status,
+    detail: reason || (oauth?.success ? `OAuth: ${oauth.data.error}.` : 'Resposta recusada pela API Magalu.') }
 }
 
 const integer = z.number().int().nonnegative().safe()
