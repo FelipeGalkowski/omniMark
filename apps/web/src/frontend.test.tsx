@@ -61,21 +61,26 @@ describe('Frontend integrado', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('Configure as credenciais do Magalu.')
     expect(fetch.mock.calls.some(([path, init]) => path.endsWith('/magalu/authorize') && init?.method === 'POST')).toBe(true)
   })
-  it('sincroniza a conta real e carrega os pedidos retornados pela API', async () => {
-    let synced = false
+  it('salva o nome da conta real e mantém os pedidos importados automaticamente', async () => {
+    let label = 'Loja de teste'
     const fetch = mockFetch((path, init) => {
       if (path === '/api/auth/me') return { body: { user } }
       if (path === '/api/companies') return { body: [{ id: 'company-real', name: 'Empresa real', role: 'OWNER' }] }
-      if (path.endsWith('/sync') && init?.method === 'POST') { synced = true; return { body: { orders: 1, incomplete: 0 } } }
-      if (path.endsWith('/accounts')) return { body: [{ id: 'account-real', marketplace: 'MERCADO_LIVRE', label: 'Loja de teste', status: 'CONNECTED', lastSyncAt: synced ? new Date().toISOString() : null }] }
+      if (path.endsWith('/account-real') && init?.method === 'PATCH') { label = JSON.parse(init.body as string).name; return { body: { id: 'account-real', name: label } } }
+      if (path.endsWith('/accounts')) return { body: [{ id: 'account-real', marketplace: 'MERCADO_LIVRE', label, status: 'CONNECTED', lastSyncAt: new Date().toISOString() }] }
       if (path.endsWith('/orders')) return { body: { orders: [{ id: '123456', companyId: 'company-real', accountId: 'account-real', marketplace: 'mercadolivre', date: new Date().toISOString(), status: 'paid', items: [{ name: 'Produto importado', qty: 1, unitPrice: 50 }], shipping: 0, shippingKnown: true, financials: { paymentConfirmed: true, discount: 0, productsTotal: 50, refunds: [], returns: [], returnsKnown: false } }] } }
       throw new Error(`Unexpected request: ${path}`)
     })
     render(<Application />)
     const action = userEvent.setup()
-    await screen.findByText('Aguardando primeira sincronização')
+    await screen.findByRole('button', { name: 'Selecionar período' })
     await action.click(screen.getByRole('button', { name: 'Contas' }))
-    await action.click(screen.getByRole('button', { name: 'Atualizar dados' }))
+    await action.click(screen.getByRole('button', { name: 'Renomear Loja de teste' }))
+    await action.clear(screen.getByRole('textbox', { name: 'Nome da conta' }))
+    await action.type(screen.getByRole('textbox', { name: 'Nome da conta' }), 'Loja organizada')
+    await action.click(screen.getByRole('button', { name: 'Salvar nome' }))
+    await screen.findByText('Loja organizada')
+    expect(fetch.mock.calls.some(([path]) => path.endsWith('/sync'))).toBe(false)
     await waitFor(() => expect(fetch.mock.calls.some(([path]) => path.endsWith('/orders'))).toBe(true))
     await action.click(screen.getByRole('button', { name: 'Pedidos' }))
     await screen.findByText('123456')

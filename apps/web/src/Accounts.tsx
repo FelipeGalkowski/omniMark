@@ -18,15 +18,15 @@ interface AccountsPageProps {
   accounts: Account[]
   setAccounts: React.Dispatch<React.SetStateAction<Account[]>>
   canEdit?: boolean
-  onSynced?: () => void
   onDisconnected?: (accountId: string) => void
 }
 
-export default function AccountsPage({ companyId, accounts, setAccounts, canEdit = true, onSynced, onDisconnected }: AccountsPageProps) {
+export default function AccountsPage({ companyId, accounts, setAccounts, canEdit = true, onDisconnected }: AccountsPageProps) {
   const { user } = useAuth()
   const demo = user.isDemoUser
   const companyAccounts = accounts.filter(a => a.companyId === companyId)
   const [connectOpen, setConnectOpen] = useState(false)
+  const [renameTarget, setRenameTarget] = useState<Account | null>(null)
   const [disconnectTarget, setDisconnectTarget] = useState<Account | null>(null)
   const [disconnecting, setDisconnecting] = useState(false)
   const [disconnectError, setDisconnectError] = useState('')
@@ -52,28 +52,12 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
     }
   }
 
-  async function triggerUpdate(id: string) {
-    if (syncing.has(id) || (!demo && !canEdit)) return
-    setSyncing(s => new Set([...s, id]))
-    setFeedback(f => { const n = {...f}; delete n[id]; return n })
-    if (!demo) {
-      try {
-        const result = await api<{ queued?: boolean; message?: string; orders: number; incomplete: number }>(`/companies/${companyId}/accounts/${id}/sync`, { method: 'POST', body: '{}' })
-        setFeedback(f => ({ ...f, [id]: { ok: true, msg: result.queued ? result.message! : `${result.orders} pedidos sincronizados.${result.incomplete ? ` ${result.incomplete} com dados financeiros incompletos.` : ''}` } }))
-      } catch (error) {
-        setFeedback(f => ({ ...f, [id]: { ok: false, msg: (error as Error).message } }))
-      } finally {
-        setSyncing(s => { const next = new Set(s); next.delete(id); return next })
-        onSynced?.()
-      }
-      return
-    }
-    setTimeout(() => {
-      setSyncing(s => { const n = new Set(s); n.delete(id); return n })
-      setAccounts(prev => prev.map(a => a.id === id ? { ...a, status:"connected" as const, lastSync: new Date(DEMO_NOW) } : a))
-      setFeedback(f => ({ ...f, [id]: { ok: true, msg: "Dados atualizados com sucesso!" } }))
-      setTimeout(() => setFeedback(f => { const n={...f}; delete n[id]; return n }), 3500)
-    }, 2500)
+  async function renameAccount(name: string) {
+    if (!renameTarget || (!demo && !canEdit)) throw new Error('Sem permissão para renomear esta conta.')
+    const target = renameTarget
+    const result = demo ? { name } : await api<{ name: string }>(`/companies/${companyId}/accounts/${target.id}`, { method: 'PATCH', body: JSON.stringify({ name }) })
+    setAccounts(previous => previous.map(account => account.id === target.id && account.companyId === companyId ? { ...account, name: result.name } : account))
+    setRenameTarget(null)
   }
 
   function triggerReconnect(id: string) {
@@ -131,7 +115,6 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
             const mkt       = MARKETPLACES.find(m => m.id === acct.marketplace)!
             const isSyncing = syncing.has(acct.id) || acct.synchronization?.state === 'running'
             const supported = demo || (acct.synchronization?.supported ?? acct.marketplace === 'mercadolivre')
-            const updateDisabled = isSyncing || (!demo && (!canEdit || !supported || acct.synchronization?.enabled === false))
             const status    = isSyncing ? "syncing" : acct.status
             const cfg       = ACCT_STATUS[status]
             const fb        = feedback[acct.id]
@@ -144,7 +127,7 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
 
                 <div className="account-content" style={{ flex:1, minWidth:0 }}>
                   <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-                    <span style={{ fontWeight:700, fontSize:15, color:"var(--t1)" }}>{acct.name}</span>
+                    <span style={{ fontWeight:700, fontSize:15, color:"var(--t1)", overflowWrap:'anywhere' }}>{acct.name}</span>
                     <AcctStatusBadge status={status} />
                   </div>
                   <div style={{ fontSize:12, color:"var(--t3)", marginTop:3 }}>{mkt.label}</div>
@@ -188,14 +171,13 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
                       Reconectar
                     </button>
                   )}
-                  {acct.status !== "reconnect_needed" && (
+                  {(demo || canEdit) && (
                     <button
-                      onClick={() => triggerUpdate(acct.id)}
-                      disabled={updateDisabled}
-                      title={!supported ? 'A importação deste marketplace ainda não está disponível.' : 'Solicitar uma atualização adicional. As atualizações periódicas são automáticas.'}
-                      style={{ ...btnSec, fontSize:12, padding:"6px 14px", opacity:updateDisabled?0.5:1, cursor:updateDisabled?"not-allowed":"pointer" }}
+                      aria-label={`Renomear ${acct.name}`}
+                      onClick={() => setRenameTarget(acct)}
+                      style={{ ...btnSec, fontSize:12, padding:"6px 14px" }}
                     >
-                      {isSyncing ? "Atualizando…" : "Atualizar dados"}
+                      Renomear
                     </button>
                   )}
                   {acct.status === "reconnect_needed" && isSyncing && (
@@ -211,10 +193,64 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
       )}
 
       {connectOpen && <ConnectModal companyId={companyId} demo={demo} onClose={() => setConnectOpen(false)} onConnect={addAccount} />}
+      {renameTarget && <RenameModal key={renameTarget.id} account={renameTarget} onClose={() => setRenameTarget(null)} onSave={renameAccount} />}
       {disconnectTarget && <DisconnectModal account={disconnectTarget} busy={disconnecting} error={disconnectError}
         onClose={() => { if (!disconnectBusy.current) setDisconnectTarget(null) }} onConfirm={disconnect} />}
     </div>
   )
+}
+
+function RenameModal({ account, onClose, onSave }: { account: Account; onClose: () => void; onSave: (name: string) => Promise<void> }) {
+  const [name, setName] = useState(account.name)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const saving = useRef(false)
+  const dialog = useRef<HTMLFormElement>(null)
+  const input = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null
+    input.current?.focus(); input.current?.select()
+    return () => { if (previous?.isConnected) previous.focus() }
+  }, [])
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault()
+    if (saving.current) return
+    const trimmed = name.trim()
+    if (!trimmed || trimmed.length > 120 || /[\p{Cc}\p{Cf}]/u.test(trimmed)) { setError('Informe um nome de 1 a 120 caracteres, sem caracteres de controle.'); return }
+    if (trimmed === account.name) { onClose(); return }
+    saving.current = true; setBusy(true); setError('')
+    try { await onSave(trimmed) }
+    catch (failure) { setError((failure as Error).message) }
+    finally { saving.current = false; setBusy(false) }
+  }
+
+  return <div style={{ position:'fixed', inset:0, zIndex:60, background:'rgba(0,0,0,0.35)', display:'grid', gridTemplateColumns:'minmax(0,1fr)', placeItems:'center', padding:16 }}>
+    <form ref={dialog} role="dialog" aria-modal="true" aria-labelledby="rename-title" aria-describedby="rename-description" aria-busy={busy} onSubmit={save}
+      onKeyDown={event => {
+        if (event.key === 'Escape') { event.preventDefault(); if (!saving.current) onClose() }
+        if (event.key === 'Tab') {
+          const controls = Array.from(dialog.current?.querySelectorAll<HTMLElement>('input:not(:disabled), button:not(:disabled)') ?? [])
+          const first = controls[0], last = controls[controls.length - 1]
+          if (!first) { event.preventDefault(); return }
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+          if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+        }
+      }}
+      style={{ width:440, maxWidth:'100%', boxSizing:'border-box', background:'var(--sf)', border:'1px solid var(--bd)', borderRadius:14, padding:24, boxShadow:'0 16px 48px var(--shd2)' }}>
+      <h2 id="rename-title" style={{ margin:'0 0 12px', fontSize:18, color:'var(--t1)' }}>Renomear conta</h2>
+      <p id="rename-description" style={{ fontSize:13, lineHeight:1.6, color:'var(--t2)' }}>Escolha um nome para identificar esta loja no OmniMark.</p>
+      <label htmlFor="account-name" style={{ display:'block', marginBottom:6, fontSize:12, fontWeight:600, color:'var(--t2)' }}>Nome da conta</label>
+      <input ref={input} id="account-name" value={name} maxLength={120} disabled={busy} aria-invalid={!!error} aria-describedby={error ? 'rename-error' : undefined}
+        onChange={event => { setName(event.target.value); setError('') }}
+        style={{ width:'100%', boxSizing:'border-box', padding:'10px 12px', borderRadius:8, border:'1px solid var(--bd)', background:'var(--inp)', color:'var(--t1)', font:'inherit', fontSize:13 }} />
+      {error && <p id="rename-error" role="alert" style={{ fontSize:13, color:'#DC2626' }}>{error}</p>}
+      <div style={{ display:'flex', justifyContent:'flex-end', gap:10, marginTop:20 }}>
+        <button type="button" disabled={busy} style={btnSec} onClick={() => { if (!saving.current) onClose() }}>Cancelar</button>
+        <button type="submit" disabled={busy} style={btnPri}>{busy ? 'Salvando…' : 'Salvar nome'}</button>
+      </div>
+    </form>
+  </div>
 }
 
 function DisconnectModal({ account, busy, error, onClose, onConfirm }: {

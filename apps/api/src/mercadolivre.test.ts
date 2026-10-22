@@ -52,6 +52,14 @@ async function complete(state: string, cookie = headers.cookie) {
   return app.inject({ method: 'POST', url: '/integrations/mercadolivre/complete', headers: { ...headers, cookie }, payload: { state } })
 }
 describe('Mercado Livre OAuth', () => {
+  it('preserva o nome escolhido no OmniMark ao reconectar uma loja', async () => {
+    db.marketplaceAccount.findUnique.mockResolvedValue({ id: 'account1', companyId, label: 'Minha loja principal' })
+    const { state } = await start()
+    await callback(state)
+    expect((await complete(state)).statusCode).toBe(200)
+    expect(db.marketplaceAccount.update).toHaveBeenCalledWith({ where: { id: 'account1' }, data: expect.objectContaining({ status: 'CONNECTED' }) })
+    expect(db.marketplaceAccount.update.mock.calls[0][0].data).not.toHaveProperty('label')
+  })
   it('encrypts tokens and rejects tampering', () => {
     const cipher = crypt.seal('secret')
     expect(cipher).not.toContain('secret'); expect(crypt.open(cipher)).toBe('secret')
