@@ -144,7 +144,7 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
                     {supported && acct.synchronization?.enabled && acct.synchronization.nextAt && !isSyncing && <> {acct.errorMsg ? 'Próxima tentativa' : 'Próxima atualização'}: {formatDateTime(new Date(acct.synchronization.nextAt))}.</>}
                   </p>}
 
-                  {acct.errorMsg && (
+                  {acct.active !== false && acct.errorMsg && (
                     <div style={{ marginTop:8, background: acct.status==="error"?"#FEE2E2":"#FEF3C7", border:`1px solid ${acct.status==="error"?"#FCA5A5":"#FCD34D"}`, borderRadius:8, padding:"8px 12px", fontSize:12, color: acct.status==="error"?"#991B1B":"#92400E" }}>
                       {acct.errorMsg}
                     </div>
