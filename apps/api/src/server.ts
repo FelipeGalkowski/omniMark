@@ -66,8 +66,11 @@ app.get('/companies/:id/accounts', { preHandler: authenticated }, async (req: an
   const member = await db.companyMember.findUnique({ where: { userId_companyId: { userId: req.currentUser.id, companyId: id } } })
   if (!member) return reply.code(404).send({ error: 'Empresa não encontrada' })
   reply.header('Cache-Control', 'no-store')
-  const accounts = await db.marketplaceAccount.findMany({ where: { companyId: id }, select: { id: true, marketplace: true, label: true, status: true, createdAt: true, lastSyncAt: true, syncFrom: true, syncTo: true, syncError: true, nextSyncAt: true, syncAttemptAt: true, syncLockUntil: true } })
-  return accounts.map(({ nextSyncAt, syncAttemptAt, syncLockUntil, ...account }) => ({ ...account, synchronization: syncService.describe({ ...account, nextSyncAt, syncAttemptAt, syncLockUntil }) }))
+  const accounts = await db.marketplaceAccount.findMany({ where: { companyId: id }, select: { id: true, marketplace: true, environment: true, label: true, status: true, createdAt: true, lastSyncAt: true, syncFrom: true, syncTo: true, syncError: true, nextSyncAt: true, syncAttemptAt: true, syncLockUntil: true } })
+  return accounts.map(({ nextSyncAt, syncAttemptAt, syncLockUntil, ...account }) => {
+    const synchronization = syncService.describe({ ...account, nextSyncAt, syncAttemptAt, syncLockUntil })
+    return { ...account, active: synchronization.state !== 'environment_mismatch', synchronization }
+  })
 })
 app.get('/companies/:id/dashboard', { preHandler: authenticated }, async (req: any, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params)

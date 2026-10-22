@@ -28,13 +28,15 @@ export interface Account {
   name: string
   status: AccountStatus
   lastSync: Date | null
+  environment?: 'PRODUCTION' | 'SANDBOX'
+  active?: boolean
   syncFrom?: Date | null
   syncTo?: Date | null
   errorMsg?: string
   synchronization?: {
     supported: boolean
     enabled: boolean
-    state: 'unsupported' | 'disabled' | 'pending' | 'running' | 'scheduled' | 'idle' | 'error' | 'reconnect_needed'
+    state: 'unsupported' | 'environment_mismatch' | 'disabled' | 'pending' | 'running' | 'scheduled' | 'idle' | 'error' | 'reconnect_needed'
     intervalMinutes: number
     nextAt: string | null
     attemptedAt: string | null

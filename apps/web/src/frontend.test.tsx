@@ -9,7 +9,7 @@ import { CreateCompanyModal, ManageCompaniesModal } from './CompanyWidgets'
 const user = { id: 'user-real', name: 'Pessoa de teste', email: 'pessoa@example.invalid' }
 function mockFetch(handler: (path: string, init?: RequestInit) => { status?: number; body: unknown }) {
   const mock = vi.fn(async (path: string, init?: RequestInit) => {
-    const result = handler(path, init)
+    const result = path === '/api/integrations/magalu/environment' ? { body: { environment: 'PRODUCTION' } } : handler(path, init)
     return new Response(JSON.stringify(result.body), { status: result.status ?? 200, headers: { 'Content-Type': 'application/json' } })
   })
   vi.stubGlobal('fetch', mock)

@@ -33,11 +33,11 @@ export async function createCompany(company: Pick<Company, 'name' | 'razaoSocial
   return companyFromApi(await api<CompanyRecord>('/companies', { method: 'POST', body: JSON.stringify(companyPayload(company)) }))
 }
 const marketplaces: Record<string, MarketplaceId> = { MERCADO_LIVRE: 'mercadolivre', SHOPEE: 'shopee', AMAZON: 'amazon', MAGALU: 'magalu' }
-export type AccountRecord = { id: string; marketplace: string; label: string; status: 'PENDING' | 'CONNECTED' | 'EXPIRED' | 'ERROR'; lastSyncAt?: string | null; syncFrom?: string | null; syncTo?: string | null; syncError?: string | null; synchronization?: Account['synchronization'] }
+export type AccountRecord = { id: string; marketplace: string; label: string; status: 'PENDING' | 'CONNECTED' | 'EXPIRED' | 'ERROR'; environment?: Account['environment']; active?: boolean; lastSyncAt?: string | null; syncFrom?: string | null; syncTo?: string | null; syncError?: string | null; synchronization?: Account['synchronization'] }
 export function accountFromApi(record: AccountRecord, companyId: string): Account {
   const marketplace = marketplaces[record.marketplace]
   if (!marketplace) throw new Error('Marketplace não reconhecido.')
-  return { id: record.id, companyId, marketplace, name: record.label, status: { PENDING: 'pending', CONNECTED: 'connected', EXPIRED: 'reconnect_needed', ERROR: 'error' }[record.status] as Account['status'], lastSync: record.lastSyncAt ? new Date(record.lastSyncAt) : null, syncFrom: record.syncFrom ? new Date(record.syncFrom) : null, syncTo: record.syncTo ? new Date(record.syncTo) : null, errorMsg: record.syncError ?? undefined, synchronization: record.synchronization }
+  return { id: record.id, companyId, marketplace, name: record.label, environment: record.environment, active: record.active, status: { PENDING: 'pending', CONNECTED: 'connected', EXPIRED: 'reconnect_needed', ERROR: 'error' }[record.status] as Account['status'], lastSync: record.lastSyncAt ? new Date(record.lastSyncAt) : null, syncFrom: record.syncFrom ? new Date(record.syncFrom) : null, syncTo: record.syncTo ? new Date(record.syncTo) : null, errorMsg: record.syncError ?? undefined, synchronization: record.synchronization }
 }
 
 export type OrderRecord = Omit<Order, 'date' | 'financials'> & { date: string; financials?: (Omit<NonNullable<Order['financials']>, 'refunds'> & { refunds: { id: string; amount: number; status: 'pending' | 'confirmed'; date: string }[] }) | null }

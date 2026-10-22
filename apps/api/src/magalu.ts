@@ -3,8 +3,11 @@ import type { FastifyInstance } from 'fastify'
 import type { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
 import { digest, vault } from './mercadolivre.js'
+import { magaluEnvironment, MAGALU_READ_SCOPES } from './magalu-environment.js'
+import { onboardMagaluSandbox } from './magalu-sandbox.js'
+import { SyncError } from './order-sync.js'
 
-export const MAGALU_SCOPES = ['open:order-order-seller:read', 'open:order-delivery-seller:read']
+export const MAGALU_SCOPES = MAGALU_READ_SCOPES
 const stateInput = z.string().regex(/^[a-f0-9]{64}$/)
 const tokenSchema = z.object({
   access_token: z.string().min(1).max(32768), refresh_token: z.string().min(1).max(32768),
@@ -18,7 +21,7 @@ export function magaluConfiguration(origin: string) {
   const redirect = new URL(process.env.MAGALU_REDIRECT_URI ?? '')
   if (redirect.protocol !== 'https:' || redirect.username || redirect.password || redirect.search || redirect.hash ||
       redirect.pathname !== '/integrations/magalu/callback' || redirect.origin !== new URL(origin).origin) throw new Error('Configuração inválida')
-  return { clientId, secret, redirect: redirect.href, crypt: vault(process.env.TOKEN_ENCRYPTION_KEY ?? '') }
+  return { clientId, secret, redirect: redirect.href, crypt: vault(process.env.TOKEN_ENCRYPTION_KEY ?? ''), ...magaluEnvironment() }
 }
 
 // Only call with a token obtained directly from the fixed ID Magalu token endpoint.
@@ -33,6 +36,10 @@ export function magaluTenant(accessToken: string) {
 }
 
 export function registerMagalu(app: FastifyInstance, db: PrismaClient, authenticated: any, cookieName: string, origin: string, request: typeof fetch = fetch) {
+  app.get('/integrations/magalu/environment', { preHandler: authenticated }, async (_req, reply) => {
+    reply.header('Cache-Control', 'no-store')
+    return { environment: magaluEnvironment().environment }
+  })
   const guard = async (req: any, reply: any) => {
     if (req.headers.origin !== origin) return reply.code(403).send({ error: 'Origem não permitida.' })
     return authenticated(req, reply)
@@ -51,10 +58,11 @@ export function registerMagalu(app: FastifyInstance, db: PrismaClient, authentic
     await db.magaluOAuthAttempt.create({ data: {
       stateHash: digest(state), sessionHash: digest(req.cookies[cookieName]), userId: req.currentUser.id,
       companyId: input.data.id, expiresAt: new Date(Date.now() + 10 * 60_000),
+      environment: config.environment,
     } })
     const url = new URL('https://id.magalu.com/login')
     url.search = new URLSearchParams({ client_id: config.clientId, redirect_uri: config.redirect, response_type: 'code',
-      choose_tenants: 'true', scope: MAGALU_SCOPES.join(' '), state }).toString()
+      choose_tenants: 'true', scope: config.scopes.join(' '), state }).toString()
     return { url: url.href }
   })
 
@@ -82,6 +90,7 @@ export function registerMagalu(app: FastifyInstance, db: PrismaClient, authentic
         attempt.sessionHash !== digest(req.cookies[cookieName]) || (!attempt.codeCipher && !attempt.denied)) return reply.code(400).send({ error: 'Conexão expirada ou iniciada em outra sessão. Tente novamente.' })
     const member = await db.companyMember.findUnique({ where: { userId_companyId: { userId: attempt.userId, companyId: attempt.companyId } } })
     if (!member || !['OWNER', 'ADMIN'].includes(member.role)) return reply.code(403).send({ error: 'Sem permissão para conectar nesta empresa.' })
+    if ((attempt.environment ?? 'PRODUCTION') !== magaluEnvironment().environment) return reply.code(400).send({ error: 'O ambiente Magalu mudou. Inicie uma nova conexão no OmniMark.' })
     const claimed = await db.magaluOAuthAttempt.deleteMany({ where: { stateHash: attempt.stateHash } })
     if (!claimed.count) return reply.code(400).send({ error: 'Autorização já utilizada.' })
     if (attempt.denied) return reply.code(400).send({ error: 'Autorização cancelada no Magalu.' })
@@ -94,22 +103,29 @@ export function registerMagalu(app: FastifyInstance, db: PrismaClient, authentic
       })
       if (!response.ok) throw new Error('Falha na autorização')
       const token = tokenSchema.parse(await response.json())
-      if (!MAGALU_SCOPES.every(scope => token.scope.split(/\s+/).includes(scope))) throw new Error('Permissões insuficientes')
+      if (!config.scopes.every(scope => token.scope.split(/\s+/).includes(scope))) throw new Error('Permissões insuficientes')
       const tenant = magaluTenant(token.access_token)
+      const seller = config.environment === 'SANDBOX' ? await onboardMagaluSandbox(token.access_token, tenant, request) : { sellerId: tenant, channelId: null }
       await db.$transaction(async tx => {
         const current = await tx.companyMember.findUnique({ where: { userId_companyId: { userId: attempt.userId, companyId: attempt.companyId } } })
         if (!current || !['OWNER', 'ADMIN'].includes(current.role)) throw new Error('Permissão alterada')
-        const existing = await tx.marketplaceAccount.findUnique({ where: { marketplace_externalId: { marketplace: 'MAGALU', externalId: tenant } } })
+        const existing = await tx.marketplaceAccount.findUnique({ where: { marketplace_externalId_environment: { marketplace: 'MAGALU', externalId: tenant, environment: config.environment } } })
         if (existing && existing.companyId !== attempt.companyId) throw new Error('Loja vinculada a outra empresa')
         if (existing?.syncLockUntil && existing.syncLockUntil > new Date()) throw new Error('Sincronização em andamento')
+        if (existing?.magaluSellerId && existing.magaluSellerId !== seller.sellerId) throw new Error('Identidade do vendedor alterada')
+        const context = { environment: config.environment, magaluSellerId: seller.sellerId, magaluChannelId: seller.channelId }
         const account = existing
-          ? await tx.marketplaceAccount.update({ where: { id: existing.id }, data: { status: 'CONNECTED', syncError: null, syncFailures: 0, nextSyncAt: new Date() } })
-          : await tx.marketplaceAccount.create({ data: { companyId: attempt.companyId, marketplace: 'MAGALU', externalId: tenant, label: `Magalu · ${tenant.slice(0, 8)}`, status: 'CONNECTED' } })
+          ? await tx.marketplaceAccount.update({ where: { id: existing.id }, data: { ...context, status: 'CONNECTED', syncError: null, syncFailures: 0, nextSyncAt: new Date() } })
+          : await tx.marketplaceAccount.create({ data: { ...context, companyId: attempt.companyId, marketplace: 'MAGALU', externalId: tenant, label: `Magalu${config.environment === 'SANDBOX' ? ' Sandbox' : ''} · ${tenant.slice(0, 8)}`, status: 'CONNECTED' } })
         const data = { tokenCipher: config.crypt.seal(JSON.stringify({ accessToken: token.access_token, refreshToken: token.refresh_token })), expiresAt: new Date(Date.now() + token.expires_in * 1000) }
         await tx.marketplaceCredential.upsert({ where: { accountId: account.id }, create: { accountId: account.id, ...data }, update: data })
       })
-      return { companyId: attempt.companyId, connected: true }
-    } catch {
+      return { companyId: attempt.companyId, connected: true, environment: config.environment }
+    } catch (error) {
+      if (error instanceof SyncError) {
+        req.log.warn({ marketplace: 'MAGALU', code: error.code, diagnostic: error.diagnostic }, 'MAGALU_CONNECTION_FAILED')
+        return reply.code(error.code).send({ error: error.message })
+      }
       // Do not log authorization codes, JWT claims, tokens or provider error bodies.
       return reply.code(502).send({ error: 'Não foi possível concluir a conexão com o Magalu. Confira as credenciais, as permissões de pedidos e entregas e se a loja já está vinculada a outra empresa; depois inicie novamente.' })
     }

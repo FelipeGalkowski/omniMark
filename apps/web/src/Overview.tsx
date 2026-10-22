@@ -12,7 +12,7 @@ import {
   type Account, type Order, type MarketplaceId,
 } from "./data"
 import {
-  DateRangePicker, MarketplaceDropdown, AccountDropdown,
+  DateRangePicker, MarketplaceDropdown, AccountDropdown, SandboxNotice,
   InfoTooltip, Card, SectionLabel, EmptyState, btnSec, btnPri,
 } from "./ui"
 import { useTheme } from "./theme"
@@ -44,7 +44,7 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
   const { user } = useAuth()
   const defaults = useMemo(() => initialDateRange(user.isDemoUser), [user.isDemoUser])
   const { isDark } = useTheme()
-  const companyAccounts = accounts.filter(a => a.companyId === companyId)
+  const companyAccounts = accounts.filter(a => a.companyId === companyId && a.active !== false)
 
   const [dateRange,   setDateRange]   = useState(defaults)
   const [selMarkets,  setSelMarkets]  = useState<MarketplaceId[]>(MARKETPLACES.map(m => m.id))
@@ -140,6 +140,7 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
 
   return (
     <div className="page-body" style={{ padding:"24px 28px", display:"flex", flexDirection:"column", gap:20 }}>
+      <SandboxNotice accounts={companyAccounts} />
 
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
         <div style={{ display:"flex", alignItems:"center", gap:6 }}>

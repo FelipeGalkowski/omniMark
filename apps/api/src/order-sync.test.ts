@@ -187,6 +187,22 @@ describe('Importação de pedidos', () => {
       expect(db.marketplaceAccount.findFirst.mock.calls[0][0].where.marketplace).toBeUndefined()
     } finally { await app.close() }
   })
+  it('restringe pedidos e cobertura à empresa e ao ambiente Magalu ativo', async () => {
+    vi.stubEnv('MAGALU_ENVIRONMENT', 'sandbox')
+    const app = Fastify()
+    const db: any = {
+      companyMember: { findUnique: vi.fn(async () => ({ role: 'OWNER' })) },
+      marketplaceAccount: { findMany: vi.fn(async () => []) },
+      order: { findMany: vi.fn(async () => []) },
+    }
+    registerOrderSync(app, db, async (req: any) => { req.currentUser = { id: 'user' } }, 'https://example.test')
+    try {
+      expect((await app.inject(`/companies/${companyId}/orders`)).statusCode).toBe(200)
+      const scope = { companyId, OR: [{ marketplace: { not: 'MAGALU' } }, { marketplace: 'MAGALU', environment: 'SANDBOX' }] }
+      expect(db.marketplaceAccount.findMany.mock.calls[0][0].where).toEqual(scope)
+      expect(db.order.findMany.mock.calls[0][0].where).toEqual({ account: scope })
+    } finally { await app.close() }
+  })
   it('nega leitura sem vínculo e sincronização por leitor ou origem externa', async () => {
     const app = Fastify()
     const db: any = { companyMember: { findUnique: vi.fn(async () => null) } }

@@ -1,32 +1,14 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
-import { randomUUID } from 'node:crypto'
+
 import { z } from 'zod'
 import { vault } from './mercadolivre.js'
 import { magaluTenant, MAGALU_SCOPES } from './magalu.js'
 import { SyncError } from './order-sync.js'
 import type { SyncExecution } from './sync-contract.js'
+import { magaluAccountContext, magaluRequestHeaders } from './magalu-environment.js'
 
-const diagnosticFields = new Set(['status', 'purchased_at__gte', 'purchased_at__lte', 'updated_at__gte', 'updated_at__lte', 'code', '_limit', '_offset', '_sort', 'X-Channel-Id', 'x-channel-id', 'X-Tenant-Id', 'x-tenant-id'])
-const diagnosticSlugs = new Set(['BAD_REQUEST', 'UNPROCESSABLE_ENTITY', 'INVALID_PARAMETER', 'INVALID_PARAMETER_VALUE', 'UNAUTHORIZED', 'FORBIDDEN', 'NOT_FOUND', 'TOO_MANY_REQUESTS', 'SERVER_ERROR', 'BAD_GATEWAY', 'SERVICE_UNAVAILABLE', 'GATEWAY_TIMEOUT'])
-const validationIssue = z.object({ field: z.string().optional(), slug: z.string().optional(),
-  loc: z.array(z.union([z.string(), z.number()])).optional(), location: z.union([z.string(), z.array(z.union([z.string(), z.number()]))]).optional() })
-const validationError = z.object({ detail: z.array(validationIssue).optional(), slug: z.string().optional(), details: z.array(validationIssue).optional() })
-const oauthError = z.object({ error: z.enum(['invalid_grant', 'invalid_client', 'invalid_request', 'unauthorized_client', 'unsupported_grant_type', 'invalid_scope']) })
-export function magaluDiagnostic(response: Response, operation: 'orders.list' | 'oauth.refresh', payload: unknown) {
-  const validation = validationError.safeParse(payload)
-  const issues = validation.success ? [...(validation.data.detail ?? []), ...(validation.data.details ?? [])] : []
-  const locations = issues.flatMap(issue => [...(issue.loc ?? []), ...(Array.isArray(issue.location) ? issue.location : issue.location ? [issue.location] : []), ...(issue.field ? [issue.field] : [])])
-    .filter((part): part is string => typeof part === 'string')
-  const fields = [...new Set(locations.flatMap(part => part.split(/[,.\s]+/)).filter(part => diagnosticFields.has(part)))].sort()
-  const slugs = validation.success ? [...new Set([validation.data.slug, ...(validation.data.details ?? []).map(issue => issue.slug)]
-    .filter((slug): slug is string => !!slug && diagnosticSlugs.has(slug)))].sort() : []
-  const oauth = operation === 'oauth.refresh' ? oauthError.safeParse(payload) : null
-  // Allowlisted metadata only: never copy messages, inputs, tokens, URLs or buyer data.
-  const reason = [fields.length ? `Campos rejeitados: ${fields.join(', ')}.` : '', slugs.length ? `Regras: ${slugs.join(', ')}.` : ''].filter(Boolean).join(' ')
-  const providerReference = z.string().uuid().safeParse(response.headers.get('x-request-id'))
-  return { reference: providerReference.success ? providerReference.data : randomUUID(), operation: `magalu.${operation}`, providerStatus: response.status,
-    detail: reason || (oauth?.success ? `OAuth: ${oauth.data.error}.` : 'Resposta recusada pela API Magalu.') }
-}
+import { magaluDiagnostic } from './magalu-diagnostic.js'
+export { magaluDiagnostic } from './magalu-diagnostic.js'
 
 const integer = z.number().int().nonnegative().safe()
 const amount = z.object({ currency: z.literal('BRL'), normalizer: z.number().int().positive().safe(), total: integer })
@@ -74,7 +56,8 @@ const pageSchema = z.object({ results: z.array(z.unknown()), meta: z.object({
   page: z.object({ count: integer, offset: integer, limit: z.number().int().positive().max(100) }),
   links: z.object({ next: z.string().nullish() }),
 }) })
-export async function readMagaluOrders(get: (path: string) => Promise<unknown>, from: Date, to: Date, incremental: boolean) {
+export async function readMagaluOrders(get: (path: string) => Promise<unknown>, from: Date, to: Date, incremental: boolean, baseUrl = 'https://api.magalu.com') {
+  if (!['https://api.magalu.com', 'https://api-sandbox.magalu.com'].includes(baseUrl)) throw new SyncError(500, 'Ambiente Magalu inválido.')
   const records = new Map<string, unknown>()
   let offset = 0
   for (let pageIndex = 0; pageIndex <= 200; pageIndex++) {
@@ -90,9 +73,9 @@ export async function readMagaluOrders(get: (path: string) => Promise<unknown>, 
     }
     const next = page.meta.links.next
     if (!next) return [...records.values()]
-    const url = new URL(next, 'https://api.magalu.com/seller/v1/orders')
+    const url = new URL(next, `${baseUrl}/seller/v1/orders`)
     const nextOffset = Number(url.searchParams.get('_offset'))
-    if (!page.results.length || url.origin !== 'https://api.magalu.com' || url.pathname !== '/seller/v1/orders' || !Number.isSafeInteger(nextOffset) || nextOffset !== offset + page.results.length) throw new SyncError(502, 'O Magalu retornou uma paginação inválida. Nenhum resultado parcial foi publicado.')
+    if (!page.results.length || url.origin !== baseUrl || url.pathname !== '/seller/v1/orders' || !Number.isSafeInteger(nextOffset) || nextOffset !== offset + page.results.length) throw new SyncError(502, 'O Magalu retornou uma paginação inválida. Nenhum resultado parcial foi publicado.')
     offset = nextOffset
   }
   throw new SyncError(422, 'A paginação Magalu excedeu o limite desta importação.')
@@ -104,6 +87,8 @@ export async function syncMagaluAccount(db: PrismaClient, accountId: string, req
   const account = await db.marketplaceAccount.findUniqueOrThrow({ where: { id: accountId }, include: { credentials: true } })
   if (account.marketplace !== 'MAGALU' || account.syncLock !== execution.lease) throw new SyncError(409, 'A sincronização perdeu sua reserva.')
   if (!account.credentials) throw new SyncError(409, 'Reconecte sua loja Magalu.', true)
+  let context: ReturnType<typeof magaluAccountContext>
+  try { context = magaluAccountContext(account) } catch { throw new SyncError(409, 'Esta conta Magalu pertence a outro ambiente ou precisa concluir a configuração de sandbox. Conecte a conta no ambiente atual.', true) }
   const crypt = vault(process.env.TOKEN_ENCRYPTION_KEY ?? '')
   let tokens = z.object({ accessToken: z.string().min(1), refreshToken: z.string().min(1) }).parse(JSON.parse(crypt.open(account.credentials.tokenCipher)))
   let credentialCipher = account.credentials.tokenCipher
@@ -133,7 +118,7 @@ export async function syncMagaluAccount(db: PrismaClient, accountId: string, req
     let refreshed = false
     for (let attempt = 0; attempt < 3; attempt++) {
       if (Date.now() > deadline) throw new SyncError(504, 'A atualização Magalu excedeu o tempo limite e será repetida automaticamente.')
-      const response = await request(`https://api.magalu.com${path}`, { redirect: 'error', headers: { Authorization: `Bearer ${tokens.accessToken}`, 'X-Tenant-Id': `GENPUB.${account.externalId}` }, signal: AbortSignal.timeout(20000) })
+      const response = await request(`${context.baseUrl}${path}`, { redirect: 'error', headers: magaluRequestHeaders(tokens.accessToken, context), signal: AbortSignal.timeout(20000) })
       if (response.status === 401 && !refreshed) { await refresh(); refreshed = true; continue }
       if (response.status === 429) {
         const value = response.headers.get('retry-after') ?? ''
@@ -155,8 +140,8 @@ export async function syncMagaluAccount(db: PrismaClient, accountId: string, req
   historyStart.setUTCFullYear(historyStart.getUTCFullYear() - 1)
   const fullSync = !account.lastFullSyncAt || !account.syncTo || Date.now() - account.lastFullSyncAt.getTime() >= 86400_000
   const from = fullSync ? historyStart : new Date(Math.max(historyStart.getTime(), account.syncTo!.getTime() - 15 * 60_000))
-  const remote = await readMagaluOrders(get, from, to, !fullSync)
-  const normalized = remote.map(order => normalizeMagaluOrder(order, account.externalId))
+  const remote = await readMagaluOrders(get, from, to, !fullSync, context.baseUrl)
+  const normalized = remote.map(order => normalizeMagaluOrder(order, context.sellerId))
   const completedAt = new Date()
   await db.$transaction(async tx => {
     const owned = await tx.marketplaceAccount.updateMany({ where: { id: accountId, syncLock: execution.lease, syncLockUntil: { gt: new Date() } }, data: {

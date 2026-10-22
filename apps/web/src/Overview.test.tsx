@@ -10,6 +10,15 @@ beforeEach(() => vi.stubGlobal('ResizeObserver', class { observe() {} unobserve(
 const text = (label: string) => screen.getByRole('group', { name: label }).textContent?.replace(/\s/g, ' ')
 
 describe('Cards de indicadores', () => {
+  it('identifica o sandbox e exclui contas de outro ambiente dos indicadores', () => {
+    const sandbox = { ...account, marketplace: 'magalu' as const, environment: 'SANDBOX' as const, active: true }
+    const inactive = { ...account, id: 'inactive', name: 'Conta inativa', active: false, lastSync: new Date() }
+    const inactiveOrder = { ...paid, id: 'inactive-order', accountId: 'inactive', items: [{ name: 'Outro ambiente', qty: 1, unitPrice: 9999 }] }
+    render(<Overview companyId="company" accounts={[sandbox, inactive]} orders={[{ ...paid, marketplace: 'magalu' }, inactiveOrder]} onAccounts={() => {}} />)
+    expect(screen.getByRole('note').textContent).toContain('Sandbox Magalu')
+    expect(text('Faturamento de vendas')).toContain('R$ 220')
+    expect(text('Faturamento de vendas')).not.toContain('9.999')
+  })
   it('mostra zero após sincronização real vazia e período coberto', () => {
     const now = new Date()
     const synced = { ...account, lastSync: now, syncFrom: new Date(now.getFullYear() - 1, 0, 1), syncTo: now }

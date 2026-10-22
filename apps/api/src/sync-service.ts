@@ -13,7 +13,7 @@ export function orderSyncConfiguration() {
   }
 }
 type Configuration = ReturnType<typeof orderSyncConfiguration>
-type AccountState = Pick<MarketplaceAccount, 'marketplace' | 'status' | 'nextSyncAt' | 'syncAttemptAt' | 'syncLockUntil' | 'syncError' | 'lastSyncAt'>
+type AccountState = Pick<MarketplaceAccount, 'marketplace' | 'status' | 'nextSyncAt' | 'syncAttemptAt' | 'syncLockUntil' | 'syncError' | 'lastSyncAt'> & Partial<Pick<MarketplaceAccount, 'environment'>>
 const leaseAvailable = (now: Date) => ({ OR: [{ syncLockUntil: null }, { syncLockUntil: { lt: now } }] })
 const isDue = (now: Date) => ({ OR: [{ nextSyncAt: null }, { nextSyncAt: { lte: now } }] })
 
@@ -27,18 +27,20 @@ export function createSyncService(db: PrismaClient, adapters: SyncAdapter[], con
 
   const describe = (account: AccountState) => {
     const supported = registry.has(account.marketplace)
+    const environment = registry.get(account.marketplace)?.environment
+    const active = !environment || environment === (account.environment ?? 'PRODUCTION')
     const running = !!account.syncLockUntil && account.syncLockUntil > new Date()
-    const state = !supported ? 'unsupported' : !config.enabled ? 'disabled' : account.status === 'EXPIRED' ? 'reconnect_needed'
+    const state = !supported ? 'unsupported' : !active ? 'environment_mismatch' : !config.enabled ? 'disabled' : account.status === 'EXPIRED' ? 'reconnect_needed'
       : account.status !== 'CONNECTED' ? 'pending' : running ? 'running' : account.syncError ? 'error' : !account.lastSyncAt || !account.nextSyncAt || account.nextSyncAt <= new Date() ? 'scheduled' : 'idle'
-    return { supported, enabled: config.enabled && supported, state, intervalMinutes: config.intervalMs / 60_000,
-      nextAt: account.nextSyncAt, attemptedAt: account.syncAttemptAt }
+    return { supported, enabled: config.enabled && supported && active, state, intervalMinutes: config.intervalMs / 60_000,
+      nextAt: active ? account.nextSyncAt : null, attemptedAt: account.syncAttemptAt }
   }
 
   async function execute(accountId: string, marketplace: MarketplaceAccount['marketplace'], failures: number) {
     if (stop.signal.aborted) return
     const now = new Date(), lease = randomUUID()
     const claimed = await db.marketplaceAccount.updateMany({ where: {
-      id: accountId, marketplace, status: 'CONNECTED', AND: [leaseAvailable(now), isDue(now)],
+      id: accountId, marketplace, ...(registry.get(marketplace)?.environment ? { environment: registry.get(marketplace)!.environment } : {}), status: 'CONNECTED', AND: [leaseAvailable(now), isDue(now)],
     }, data: { syncLock: lease, syncLockUntil: new Date(now.getTime() + 15 * 60_000), syncAttemptAt: now } })
     if (!claimed.count) return
     try {
@@ -64,7 +66,9 @@ export function createSyncService(db: PrismaClient, adapters: SyncAdapter[], con
     batch = (async () => {
       const now = new Date()
       const due = await db.marketplaceAccount.findMany({ where: {
-        marketplace: { in: [...registry.keys()] }, status: 'CONNECTED', AND: [leaseAvailable(now), isDue(now)],
+        marketplace: { in: [...registry.keys()] }, status: 'CONNECTED', AND: [leaseAvailable(now), isDue(now), {
+          OR: [...registry.values()].map(adapter => ({ marketplace: adapter.marketplace, ...(adapter.environment ? { environment: adapter.environment } : {}) })),
+        }],
       }, orderBy: [{ nextSyncAt: { sort: 'asc', nulls: 'first' } }, { id: 'asc' }], take: config.concurrency,
         select: { id: true, marketplace: true, syncFailures: true } })
       const results = await Promise.allSettled(due.map(account => execute(account.id, account.marketplace, account.syncFailures)))
@@ -77,6 +81,7 @@ export function createSyncService(db: PrismaClient, adapters: SyncAdapter[], con
     const account = await db.marketplaceAccount.findUnique({ where: { id: accountId } })
     if (!account) throw new SyncError(404, 'Conta não encontrada.')
     if (!registry.has(account.marketplace)) throw new SyncError(501, 'A sincronização deste marketplace ainda não está disponível.')
+    if (describe(account).state === 'environment_mismatch') throw new SyncError(409, 'Esta conta pertence a outro ambiente Magalu. Conecte a conta no ambiente atual.')
     if (!config.enabled) throw new SyncError(503, 'A atualização automática está pausada no servidor.')
     if (account.status !== 'CONNECTED') throw new SyncError(409, 'Reconecte a conta para atualizar os dados.', true)
     const now = new Date()

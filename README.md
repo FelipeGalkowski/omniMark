@@ -113,7 +113,7 @@ Os conectores atuais importam inicialmente até 12 meses e depois consultam pedi
 
 ### Diagnóstico Magalu no stage
 
-As consultas de pedidos enviam `Authorization: Bearer ...` e `X-Tenant-Id: GENPUB.<uuid>`. O UUID vem da conta vinculada e é conferido contra a identidade da autorização antes da consulta; não há variável de ambiente adicional para esse cabeçalho.
+As consultas de pedidos enviam `Authorization: Bearer ...` e `X-Tenant-Id: GENPUB.<uuid>`. Em produção, o UUID é o da organização autorizada. No sandbox, é o vendedor fictício retornado pelo onboarding; a identidade da autorização pessoal é armazenada e validada separadamente. Não há variável de ambiente adicional para esse cabeçalho.
 
 Nos Runtime Logs do Coolify, procure `ORDER_SYNC_FAILED` com `marketplace: MAGALU`. O diagnóstico preserva o status HTTP do provedor, campos e códigos de erro reconhecidos nos formatos `detail` e `details`, além do `X-Request-ID` quando for um UUID válido. Mensagens livres, valores enviados e dados de compradores não são registrados.
 
@@ -123,7 +123,7 @@ Para reproduzir somente a primeira consulta da sincronização, execute no termi
 node /app/apps/api/dist/magalu-diagnose.js
 ```
 
-O comando exige `WEB_ORIGIN=https://teste.omnimark.tech` e exatamente uma conta Magalu conectada. Faz no máximo um GET, descarta pedidos retornados e exibe somente o diagnóstico seguro. Em respostas de erro, inclui `providerMessage` com as mensagens de validação após remover credenciais conhecidas, tokens, links, e-mails e identificadores; campos `input` e objetos de compradores não são copiados. Essas mensagens livres não são adicionadas aos logs automáticos. Não importa pedidos, não altera registros ou agendamentos e não renova tokens. Se a autorização estiver vencida, aguarde a renovação pela rotina automática. Uma resposta 200 confirma apenas que a primeira consulta foi aceita, sem validar a importação completa.
+O comando exige `WEB_ORIGIN=https://teste.omnimark.tech` e exatamente uma conta Magalu conectada no ambiente Magalu ativo. Faz no máximo um GET, descarta pedidos retornados e exibe somente o diagnóstico seguro. Em respostas de erro, inclui `providerMessage` com as mensagens de validação após remover credenciais conhecidas, tokens, links, e-mails e identificadores; campos `input` e objetos de compradores não são copiados. Essas mensagens livres não são adicionadas aos logs automáticos. Não importa pedidos, não altera registros ou agendamentos e não renova tokens. Se a autorização estiver vencida, aguarde a renovação pela rotina automática. Uma resposta 200 confirma apenas que a primeira consulta foi aceita, sem validar a importação completa.
 
 `apps/api/src/sync-contract.ts` define o contrato dos conectores. Para Shopee, Amazon ou outro canal, implemente a leitura, normalização, renovação e persistência e registre o adaptador em `sync-adapters.ts`. Ele passa a usar o mesmo agendador, reservas e tentativas automaticamente. Shopee e Amazon continuam sem conector real; não são anunciados como sincronizados nem consultados por um adaptador fictício. Cada conector deve salvar somente após ler todas as páginas e validar a identidade da loja.
 
@@ -150,9 +150,48 @@ Guarde o Client Secret imediatamente: ele não é recuperável posteriormente. C
 
 O callback exige um estado válido, vinculado à sessão e empresa originais, com expiração de dez minutos e consumo único. Uma visita direta sem parâmetros retorna HTTP 400, como esperado. Tentativas Magalu ficam em tabela própria; a migração é aditiva e não altera credenciais ou tentativas do Mercado Livre. O código é criptografado antes de ser armazenado e trocado por tokens somente após a volta ao painel com a sessão original.
 
-O consentimento solicita apenas leitura de pedidos/entregas e `choose_tenants=true`, para selecionar a organização da loja. O identificador canônico da conta é extraído do `sub` do JWT recebido **diretamente** do endpoint fixo de tokens do ID Magalu; JWTs enviados pelo navegador não são aceitos. A mesma loja não pode ser vinculada a outra empresa. A identificação por tenant e os escopos ainda precisam de validação ponta a ponta com uma loja Magalu autorizada após a criação do cliente.
+Em produção, o consentimento solicita apenas leitura de pedidos/entregas e `choose_tenants=true`, para selecionar a organização da loja. O identificador canônico da autorização é extraído do `sub` do JWT recebido **diretamente** do endpoint fixo de tokens do ID Magalu; JWTs enviados pelo navegador não são aceitos. A mesma autorização no mesmo ambiente não pode ser vinculada a outra empresa. A identificação por tenant e os escopos ainda precisam de validação ponta a ponta com uma loja Magalu autorizada após a criação do cliente.
 
 Documentação usada: [criação do cliente](https://developers.magalu.com/docs/first-steps/create-an-application/create-application/index.html), [consentimento e tokens](https://developers.magalu.com/docs/first-steps/create-an-application/authentication-authorization/index.html), [identificação de tenants no ID Magalu](https://developers.magalu.com/docs/apis_logistic/carrier/first-steps/become_carrier_integrator/index.html).
+
+## Sandbox Magalu no stage
+
+O sandbox usa as APIs oficiais de teste da Magalu. Configure `MAGALU_ENVIRONMENT=sandbox` somente em runtime no Coolify, mantendo as credenciais e a chave de criptografia existentes. O padrão `production` consulta lojas reais. A migração adiciona o ambiente às contas e tentativas OAuth; as contas existentes permanecem em produção. O agendador e as consultas de pedidos ignoram contas Magalu de outro ambiente, que continuam visíveis em Contas como “Outro ambiente”. Não é necessário apagar contas ou pedidos para alternar o ambiente.
+
+Para um client já criado, atualize as audiences e acrescente as permissões de catálogo no PowerShell, substituindo o UUID:
+
+```powershell
+.\idm client update --uuid "UUID_DO_SEU_CLIENT" --audience "https://api.magalu.com https://api-sandbox.magalu.com https://services.magalu.com"
+.\idm client add-scope --client-uuid "UUID_DO_SEU_CLIENT" --scopes "open:order-logistics-seller:read open:portfolio-skus-seller:read open:portfolio-skus-seller:write open:portfolio-prices-seller:read open:portfolio-prices-seller:write open:portfolio-stocks-seller:read open:portfolio-stocks-seller:write" --reason "Criar catalogo ficticio e testar importacao de pedidos no sandbox Magalu para o TCC OmniMark"
+```
+
+O comando `update` não aceita `--scopes`; as permissões adicionais são cadastradas com `add-scope`. Os dois escopos de leitura de pedidos/entregas do cadastro original também são necessários.
+
+Depois do deploy, use Contas → Conectar conta → Magalu e autorize novamente, agora no sandbox. A conta pessoal do ID Magalu pode ser usada neste ambiente. O callback solicita as nove permissões de teste e prepara o vendedor fictício pelo endpoint fixo de onboarding. O identificador desse vendedor é salvo separadamente da identidade pessoal da autorização. O painel identifica a conta e os pedidos como fictícios e informa que eles podem compor os indicadores durante os testes.
+
+Para criar o catálogo, execute no Terminal do aplicativo de stage no Coolify:
+
+```sh
+node /app/apps/api/dist/magalu-sandbox-seed.js --catalog
+```
+
+Se a resposta for `product_submitted`, aguarde o processamento da Magalu e repita `--catalog`. Quando retornar `catalog_submitted`, o preço de R$ 99,90 e o estoque de 100 unidades foram enviados. Aguarde o processamento antes de criar um pedido:
+
+```sh
+node /app/apps/api/dist/magalu-sandbox-seed.js --order
+```
+
+Cada execução de `--order` cria um novo pedido fictício. O comando solicita sua aprovação quando a resposta contém os IDs necessários e não repete automaticamente gravações. Se a aprovação ficar pendente, use os IDs retornados para solicitar a aprovação do mesmo pedido:
+
+```sh
+node /app/apps/api/dist/magalu-sandbox-seed.js --approve ID_DO_PEDIDO ID_DA_ENTREGA
+```
+
+Os comandos exigem o domínio de stage, modo sandbox e exatamente uma conta Magalu de sandbox conectada. Nunca gravam na API de produção. Usam o SKU estável `OMNIMARK-SANDBOX-001` e a imagem pública `/sandbox-product.jpg`; não importam pedidos diretamente no banco nem exibem dados de compradores ou credenciais. A importação usa a rotina automática existente. Os retornos de criação/aprovação indicam aceitação da operação, e a confirmação dos dados depende das consultas posteriores à Magalu.
+
+Para usar uma loja real futuramente, configure `MAGALU_ENVIRONMENT=production` e conecte sua organização vendedora. As contas de sandbox ficam fora das consultas e dos indicadores. A validação ponta a ponta do onboarding, catálogo e pedido de sandbox depende da nova autorização no stage e permanece necessária após o deploy.
+
+Fontes: [visão geral do sandbox](https://developers.magalu.com/docs/apis/sandbox/overview/index.html), [catálogo de teste](https://developers.magalu.com/docs/apis/sandbox/products/), [criação de pedidos fictícios](https://developers.magalu.com/docs/apis/sandbox/orders/createorder/index.html) e [aprovação de pedidos](https://developers.magalu.com/docs/apis/sandbox/orders/orderstatus/index.html).
 
 ## Pendências
 

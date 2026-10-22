@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { normalizeMagaluOrder, readMagaluOrders, syncMagaluAccount } from './magalu-sync.js'
 import { MAGALU_SCOPES } from './magalu.js'
 import { vault } from './mercadolivre.js'
+import { MAGALU_SANDBOX_CHANNEL } from './magalu-environment.js'
 
 const tenant = 'c36f9d61-241d-43c6-87ed-2faac6dc8ab1', key = 'ab'.repeat(32)
 const jwt = () => `header.${Buffer.from(JSON.stringify({ sub: `GENPUB.${tenant}`, exp: Math.floor(Date.now() / 1000) + 7200 })).toString('base64url')}.signature`
@@ -24,7 +25,7 @@ function database(expired = false) {
   db.$transaction = vi.fn(async (fn: any) => fn(db))
   return { db, account }
 }
-beforeEach(() => { vi.stubEnv('TOKEN_ENCRYPTION_KEY', key); vi.stubEnv('MAGALU_CLIENT_ID', 'client'); vi.stubEnv('MAGALU_CLIENT_SECRET', 'private-client-secret') })
+beforeEach(() => { vi.stubEnv('MAGALU_ENVIRONMENT', 'production'); vi.stubEnv('TOKEN_ENCRYPTION_KEY', key); vi.stubEnv('MAGALU_CLIENT_ID', 'client'); vi.stubEnv('MAGALU_CLIENT_SECRET', 'private-client-secret') })
 afterEach(() => vi.unstubAllEnvs())
 
 it('normalizes documented Magalu amounts, avoids counting freight twice and excludes buyer data', () => {
@@ -165,4 +166,28 @@ it.each([
   const failure = await syncMagaluAccount(db, 'account', vi.fn(async () => response(payload, 422)), { lease: 'lease' }).catch(error => error)
   expect(failure.diagnostic.detail).toBe('Campos rejeitados: X-Tenant-Id.')
   expect(db.$transaction).not.toHaveBeenCalled()
+})
+
+it('imports sandbox pages from the sandbox host using the onboarded seller while retaining the personal authorization identity', async () => {
+  vi.stubEnv('MAGALU_ENVIRONMENT', 'sandbox')
+  const { db, account } = database()
+  const seller = '9e0dcdef-a9ad-40f7-a739-266de26b78bc'
+  Object.assign(account, { environment: 'SANDBOX', magaluSellerId: seller, magaluChannelId: MAGALU_SANDBOX_CHANNEL })
+  const sandboxOrder = order(); sandboxOrder.deliveries[0].seller.id = `GENPUB.${seller}`
+  const request = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    expect(new URL(String(input)).origin).toBe('https://api-sandbox.magalu.com')
+    expect(new Headers(init?.headers).get('X-Tenant-Id')).toBe(`GENPUB.${seller}`)
+    expect(new Headers(init?.headers).get('X-Channel-Id')).toBe(MAGALU_SANDBOX_CHANNEL)
+    return response(page([sandboxOrder]))
+  })
+  expect(await syncMagaluAccount(db, 'account', request, { lease: 'lease' })).toEqual({ orders: 1, incomplete: 1 })
+  expect(db.order.upsert).toHaveBeenCalledOnce()
+})
+it('refuses production credentials in sandbox mode and refuses pagination crossing environments', async () => {
+  vi.stubEnv('MAGALU_ENVIRONMENT', 'sandbox')
+  const { db } = database(), request = vi.fn()
+  await expect(syncMagaluAccount(db, 'account', request, { lease: 'lease' })).rejects.toMatchObject({ reconnect: true })
+  expect(request).not.toHaveBeenCalled()
+  const get = vi.fn(async () => page([order()], 0, 'https://api.magalu.com/seller/v1/orders?_offset=1'))
+  await expect(readMagaluOrders(get, new Date(), new Date(), false, 'https://api-sandbox.magalu.com')).rejects.toThrow('paginação inválida')
 })

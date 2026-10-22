@@ -90,7 +90,7 @@ export function registerMercadoLivre(app: FastifyInstance, db: PrismaClient, aut
       await db.$transaction(async tx => {
         const currentMember = await tx.companyMember.findUnique({ where: { userId_companyId: { userId: attempt.userId, companyId: attempt.companyId } } })
         if (!currentMember || currentMember.role === 'VIEWER') throw new Error('Permission changed')
-        const existing = await tx.marketplaceAccount.findUnique({ where: { marketplace_externalId: { marketplace: 'MERCADO_LIVRE', externalId: String(profile.id) } } })
+        const existing = await tx.marketplaceAccount.findUnique({ where: { marketplace_externalId_environment: { marketplace: 'MERCADO_LIVRE', externalId: String(profile.id), environment: 'PRODUCTION' } } })
         if (existing && existing.companyId !== attempt.companyId) throw new Error('Account already assigned')
         if (existing?.syncLockUntil && existing.syncLockUntil > new Date()) throw new Error('Sync in progress')
         const account = existing ? await tx.marketplaceAccount.update({ where: { id: existing.id }, data: { status: 'CONNECTED', syncError: null, syncFailures: 0, nextSyncAt: new Date() } }) : await tx.marketplaceAccount.create({ data: { companyId: attempt.companyId, marketplace: 'MERCADO_LIVRE', externalId: String(profile.id), label: profile.nickname, status: 'CONNECTED' } })

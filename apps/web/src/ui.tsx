@@ -15,6 +15,13 @@ export interface DateRangeValue {
   to: Date
 }
 
+export function SandboxNotice({ accounts }: { accounts: Account[] }) {
+  if (!accounts.some(account => account.active !== false && account.marketplace === 'magalu' && account.environment === 'SANDBOX')) return null
+  return <div role="note" style={{ padding:'10px 16px', border:'1px solid #93C5FD', borderRadius:10, background:'#EFF6FF', color:'#1E40AF', fontSize:12, lineHeight:1.6 }}>
+    <strong>Sandbox Magalu.</strong> Os pedidos desta integração são fictícios e podem compor os indicadores exibidos. Use-os somente para testes.
+  </div>
+}
+
 interface DateRangePickerProps {
   value: DateRangeValue
   onChange: (r: DateRangeValue) => void

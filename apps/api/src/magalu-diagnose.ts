@@ -6,15 +6,18 @@ import { vault } from './mercadolivre.js'
 import { magaluTenant } from './magalu.js'
 import { magaluDiagnostic } from './magalu-sync.js'
 import { magaluDiagnosticMessage } from './magalu-diagnostic-message.js'
+import { magaluEnvironment, magaluAccountContext, magaluRequestHeaders } from './magalu-environment.js'
 
 class DiagnosticError extends Error {}
 
 // Operator-only probe: one GET, no refresh, import, database writes or scheduler changes.
 export async function diagnoseMagalu(db: PrismaClient, request: typeof fetch = fetch) {
   if (process.env.WEB_ORIGIN !== 'https://teste.omnimark.tech') throw new DiagnosticError('Este diagnóstico está restrito ao ambiente de stage.')
-  const accounts = await db.marketplaceAccount.findMany({ where: { marketplace: 'MAGALU', status: 'CONNECTED' }, include: { credentials: true }, take: 2 })
+  const accounts = await db.marketplaceAccount.findMany({ where: { marketplace: 'MAGALU', status: 'CONNECTED', environment: magaluEnvironment().environment }, include: { credentials: true }, take: 2 })
   if (accounts.length !== 1) throw new DiagnosticError('O diagnóstico precisa de exatamente uma conta Magalu conectada no stage.')
   const account = accounts[0]
+  let context: ReturnType<typeof magaluAccountContext>
+  try { context = magaluAccountContext(account) } catch { throw new DiagnosticError('Conecte uma conta Magalu no ambiente atual e conclua o cadastro de sandbox antes do diagnóstico.') }
   if (!account.credentials || account.credentials.expiresAt.getTime() <= Date.now() + 30000) throw new DiagnosticError('Aguarde a renovação automática da autorização Magalu antes de repetir o diagnóstico.')
   const tokens = z.object({ accessToken: z.string().min(1), refreshToken: z.string().optional() }).parse(JSON.parse(vault(process.env.TOKEN_ENCRYPTION_KEY ?? '').open(account.credentials.tokenCipher)))
   if (magaluTenant(tokens.accessToken) !== account.externalId) throw new DiagnosticError('A autorização não corresponde à loja conectada.')
@@ -24,7 +27,7 @@ export async function diagnoseMagalu(db: PrismaClient, request: typeof fetch = f
   const from = fullSync ? historyStart : new Date(Math.max(historyStart.getTime(), account.syncTo!.getTime() - 15 * 60_000))
   const field = fullSync ? 'purchased_at' : 'updated_at'
   const query = new URLSearchParams({ [`${field}__gte`]: from.toISOString(), [`${field}__lte`]: to.toISOString(), _limit: '50', _offset: '0', _sort: 'purchased_at:asc' })
-  const response = await request(`https://api.magalu.com/seller/v1/orders?${query}`, { redirect: 'error', headers: { Authorization: `Bearer ${tokens.accessToken}`, 'X-Tenant-Id': `GENPUB.${account.externalId}` }, signal: AbortSignal.timeout(20000) })
+  const response = await request(`${context.baseUrl}/seller/v1/orders?${query}`, { redirect: 'error', headers: magaluRequestHeaders(tokens.accessToken, context), signal: AbortSignal.timeout(20000) })
   if (response.ok) {
     await response.body?.cancel()
     return { operation: 'magalu.orders.list', providerStatus: response.status, detail: 'Consulta aceita pela Magalu. Diagnóstico concluído sem importar dados.' }

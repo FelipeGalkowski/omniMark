@@ -6,8 +6,8 @@ import Accounts from './Accounts'
 import { AuthContext } from './auth'
 import type { Account } from './data'
 
-function Fixture({ demo = false, canEdit = true, onDisconnected = vi.fn(), marketplace = 'mercadolivre', synchronization }: { demo?: boolean; canEdit?: boolean; onDisconnected?: ReturnType<typeof vi.fn>; marketplace?: Account['marketplace']; synchronization?: Account['synchronization'] }) {
-  const [accounts, setAccounts] = useState<Account[]>([{ id:'account', companyId:'company', name:'Loja teste', marketplace, status:'connected', lastSync:null, synchronization }])
+function Fixture({ demo = false, canEdit = true, onDisconnected = vi.fn(), marketplace = 'mercadolivre', synchronization, environment, active }: { demo?: boolean; canEdit?: boolean; onDisconnected?: ReturnType<typeof vi.fn>; marketplace?: Account['marketplace']; synchronization?: Account['synchronization']; environment?: Account['environment']; active?: boolean }) {
+  const [accounts, setAccounts] = useState<Account[]>([{ id:'account', companyId:'company', name:'Loja teste', marketplace, status:'connected', lastSync:null, synchronization, environment, active }])
   return <AuthContext.Provider value={{ user:{ id:'user', name:'Pessoa', email:'test@example.test', isDemoUser:demo }, updateUser:async () => {} }}>
     <Accounts companyId="company" accounts={accounts} setAccounts={setAccounts} canEdit={canEdit} onDisconnected={onDisconnected} />
   </AuthContext.Provider>
@@ -111,5 +111,28 @@ describe('Renomear contas', () => {
   it('oculta a edição para visualizadores', () => {
     render(<Fixture canEdit={false} />)
     expect(screen.queryByRole('button', { name: 'Renomear Loja teste' })).toBeNull()
+  })
+})
+
+describe('Contas de sandbox', () => {
+  it('identifica os dados fictícios e explica as permissões antes de abrir o consentimento', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ environment: 'SANDBOX' }), { status: 200 }))
+    vi.stubGlobal('fetch', fetch)
+    render(<Fixture marketplace="magalu" environment="SANDBOX" active />)
+    expect(screen.getByRole('note').textContent).toContain('pedidos desta integração são fictícios')
+    expect(screen.getByText('Sandbox · dados fictícios')).toBeTruthy()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Conectar nova conta' }))
+    await user.click(screen.getByRole('button', { name: 'Magalu' }))
+    expect(await screen.findByText(/Você pode usar seu ID pessoal/)).toBeTruthy()
+    expect(screen.getByText(/permissões de catálogo/)).toBeTruthy()
+    expect(fetch).toHaveBeenCalledWith('/api/integrations/magalu/environment', expect.any(Object))
+  })
+  it('mantém visível a conta de outro ambiente sem anunciar uma sincronização ativa', () => {
+    render(<Fixture marketplace="magalu" environment="PRODUCTION" active={false} synchronization={{ supported: true, enabled: false, state: 'environment_mismatch', intervalMinutes: 5, nextAt: null, attemptedAt: null }} />)
+    expect(screen.getByText('Outro ambiente')).toBeTruthy()
+    expect(screen.getByText(/Seus dados não entram nos pedidos e indicadores atuais/)).toBeTruthy()
+    expect(screen.queryByRole('note')).toBeNull()
+    expect(screen.queryByText(/Atualização automática a cada/)).toBeNull()
   })
 })

@@ -98,12 +98,19 @@ enum ConnectionStatus {
   EXPIRED
   ERROR
 }
+enum MarketplaceEnvironment {
+  PRODUCTION
+  SANDBOX
+}
 model MarketplaceAccount {
   id String @id @default(uuid())
   companyId String
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   marketplace Marketplace
   externalId String
+  environment MarketplaceEnvironment @default(PRODUCTION)
+  magaluSellerId String?
+  magaluChannelId String?
   label String
   status ConnectionStatus @default(PENDING)
   createdAt DateTime @default(now())
@@ -119,7 +126,7 @@ model MarketplaceAccount {
   lastFullSyncAt DateTime?
   syncLock String?
   syncLockUntil DateTime?
-  @@unique([marketplace, externalId])
+  @@unique([marketplace, externalId, environment])
   @@index([companyId])
   @@index([marketplace, status, nextSyncAt])
 }
@@ -147,6 +154,7 @@ model MagaluOAuthAttempt {
   sessionHash String
   userId String
   companyId String
+  environment MarketplaceEnvironment @default(PRODUCTION)
   codeCipher String?
   denied Boolean @default(false)
   expiresAt DateTime

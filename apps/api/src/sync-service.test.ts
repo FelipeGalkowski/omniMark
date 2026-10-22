@@ -154,3 +154,15 @@ it('starts on server readiness, polls in the background and stops when the serve
     expect(service.processDue).toHaveBeenCalledTimes(2)
   } finally { await app.close() }
 })
+
+it('keeps accounts of another provider environment inactive and never claims or queues them', async () => {
+  const production = fixture({ marketplace: 'MAGALU', environment: 'PRODUCTION' }), sandbox = fixture({ id: 'sandbox', marketplace: 'MAGALU', environment: 'SANDBOX' })
+  const run = vi.fn(async (_db: unknown, _accountId: string) => ({ orders: 0, incomplete: 0 }))
+  const service = createSyncService(store([production, sandbox]), [{ marketplace: 'MAGALU', environment: 'SANDBOX', run }], config)
+  expect(service.describe(production as any)).toMatchObject({ enabled: false, state: 'environment_mismatch', nextAt: null })
+  await service.processDue()
+  expect(run).toHaveBeenCalledOnce()
+  expect(run.mock.calls[0][1]).toBe('sandbox')
+  expect(production.syncAttemptAt).toBeNull()
+  await expect(service.enqueue('account')).rejects.toThrow('outro ambiente')
+})

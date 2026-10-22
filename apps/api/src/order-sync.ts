@@ -4,6 +4,7 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { vault } from './mercadolivre.js'
 import type { SyncExecution } from './sync-contract.js'
+import { activeMarketplaceAccounts } from './magalu-environment.js'
 
 const identifier = z.union([z.number().int().nonnegative().safe(), z.string().regex(/^\d+$/)]).transform(String)
 const money = z.number().finite().nonnegative()
@@ -259,8 +260,9 @@ export function registerOrderSync(app: FastifyInstance, db: PrismaClient, authen
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
     const member = await db.companyMember.findUnique({ where: { userId_companyId: { userId: req.currentUser.id, companyId: id } } })
     if (!member) return reply.code(404).send({ error: 'Empresa não encontrada.' })
-    const accounts = await db.marketplaceAccount.findMany({ where: { companyId: id }, select: { id: true, marketplace: true, lastSyncAt: true, syncFrom: true, syncTo: true } })
-    const rows = await db.order.findMany({ where: { account: { companyId: id } }, select: { snapshot: true, accountId: true }, orderBy: { orderedAt: 'desc' } })
+    const accountScope = { companyId: id, ...activeMarketplaceAccounts() }
+    const accounts = await db.marketplaceAccount.findMany({ where: accountScope, select: { id: true, marketplace: true, lastSyncAt: true, syncFrom: true, syncTo: true } })
+    const rows = await db.order.findMany({ where: { account: accountScope }, select: { snapshot: true, accountId: true }, orderBy: { orderedAt: 'desc' } })
     reply.header('Cache-Control', 'no-store')
     return { orders: rows.filter(row => row.snapshot).map(row => ({ ...(row.snapshot as object), companyId: id, accountId: row.accountId })), coverage: accounts }
   })

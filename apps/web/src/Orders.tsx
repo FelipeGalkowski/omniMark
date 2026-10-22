@@ -9,7 +9,7 @@ import {
   type Account, type Order, type OrderStatus, type MarketplaceId,
 } from "./data"
 import {
-  DateRangePicker, AccountDropdown, MarketplaceDropdown, StatusDropdown,
+  DateRangePicker, AccountDropdown, MarketplaceDropdown, StatusDropdown, SandboxNotice,
   StatusBadge, EmptyState, btnSec, btnPri, MarketplaceDot,
 } from "./ui"
 
@@ -24,7 +24,7 @@ interface OrdersPageProps {
 export default function OrdersPage({ companyId, accounts, orders }: OrdersPageProps) {
   const { user } = useAuth()
   const defaults = useMemo(() => initialDateRange(user.isDemoUser), [user.isDemoUser])
-  const companyAccounts = accounts.filter(a => a.companyId === companyId)
+  const companyAccounts = accounts.filter(a => a.companyId === companyId && a.active !== false)
   const allAccountIds   = companyAccounts.map(a => a.id)
 
   const [dateRange,     setDateRange]     = useState(defaults)
@@ -68,6 +68,7 @@ export default function OrdersPage({ companyId, accounts, orders }: OrdersPagePr
 
   return (
     <div className="page-body" style={{ padding:"24px 28px", display:"flex", flexDirection:"column", gap:16, position:"relative" }}>
+      <SandboxNotice accounts={companyAccounts} />
 
       <div style={{ background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:12, padding:"14px 18px", display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
         <div style={{ position:"relative", flexShrink:0 }}>

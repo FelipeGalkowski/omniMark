@@ -3,6 +3,7 @@ import Fastify from 'fastify'
 import cookie from '@fastify/cookie'
 import { MAGALU_SCOPES, magaluConfiguration, magaluTenant, registerMagalu } from './magalu.js'
 import { digest, vault } from './mercadolivre.js'
+import { MAGALU_SANDBOX_CHANNEL, MAGALU_SANDBOX_SCOPES } from './magalu-environment.js'
 
 const companyId = '2a741c2f-c591-41c3-9bc3-92db19003e1d'
 const tenant = '351d49cf-9394-4b20-8ced-be7e16d65fa5'
@@ -19,6 +20,7 @@ beforeEach(async () => {
   vi.stubEnv('MAGALU_CLIENT_ID', 'client-test'); vi.stubEnv('MAGALU_CLIENT_SECRET', 'secret-test')
   vi.stubEnv('MAGALU_REDIRECT_URI', `${origin}/integrations/magalu/callback`)
   vi.stubEnv('TOKEN_ENCRYPTION_KEY', 'ab'.repeat(32))
+  vi.stubEnv('MAGALU_ENVIRONMENT', 'production')
   attempts = new Map()
   db = {
     companyMember: { findUnique: vi.fn(async () => ({ role: 'OWNER' })) },
@@ -91,7 +93,7 @@ describe('Magalu OAuth', () => {
     expect((await complete(state, { cookie: 'session=other' })).statusCode).toBe(400)
     expect(provider).not.toHaveBeenCalled()
     const completed = await complete(state)
-    expect(completed.json()).toEqual({ connected: true, companyId })
+    expect(completed.json()).toEqual({ connected: true, companyId, environment: 'PRODUCTION' })
     expect(completed.body).not.toContain('refresh-secret')
     const saved = db.marketplaceCredential.upsert.mock.calls[0][0].create
     const stored = JSON.parse(crypt.open(saved.tokenCipher))
@@ -148,6 +150,7 @@ describe('Magalu OAuth', () => {
     expect((await complete(state)).statusCode).toBe(200)
     expect(db.marketplaceAccount.create).not.toHaveBeenCalled()
     expect(db.marketplaceAccount.update).toHaveBeenCalledWith({ where: { id: 'account' }, data: {
+      environment: 'PRODUCTION', magaluSellerId: tenant, magaluChannelId: null,
       status: 'CONNECTED', syncError: null, syncFailures: 0, nextSyncAt: expect.any(Date),
     } })
   })
@@ -167,5 +170,35 @@ describe('Magalu OAuth', () => {
     expect(magaluTenant(jwt(tenant.toUpperCase()))).toBe(tenant)
     expect(() => magaluTenant(jwt('unknown'))).toThrow()
     expect(() => magaluTenant(jwt(tenant, 1))).toThrow()
+  })
+  it('prepares a sandbox seller from a personal tenant without changing the production identity', async () => {
+    vi.stubEnv('MAGALU_ENVIRONMENT', 'sandbox')
+    const sellerId = '9e0dcdef-a9ad-40f7-a739-266de26b78bc'
+    provider.mockResolvedValueOnce(new Response(JSON.stringify({ ...token(), scope: MAGALU_SANDBOX_SCOPES.join(' ') })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ seller_id: `GENPUB.${sellerId}`, channel_id: MAGALU_SANDBOX_CHANNEL })))
+    const { state, url } = await start()
+    expect(url.searchParams.get('scope')).toBe(MAGALU_SANDBOX_SCOPES.join(' '))
+    await callback(state)
+    expect((await complete(state)).json()).toEqual({ connected: true, companyId, environment: 'SANDBOX' })
+    expect(provider.mock.calls[1]).toEqual(['https://api-sandbox.magalu.com/v1/samples/onboarding', expect.objectContaining({ method: 'PUT', body: JSON.stringify({ channel_id: MAGALU_SANDBOX_CHANNEL }) })])
+    expect(db.marketplaceAccount.findUnique).toHaveBeenCalledWith({ where: { marketplace_externalId_environment: { marketplace: 'MAGALU', externalId: tenant, environment: 'SANDBOX' } } })
+    expect(db.marketplaceAccount.create.mock.calls[0][0].data).toMatchObject({ externalId: tenant, environment: 'SANDBOX', magaluSellerId: sellerId, magaluChannelId: MAGALU_SANDBOX_CHANNEL })
+  })
+  it('binds the OAuth attempt to its environment and refuses a changed mode before exchanging tokens', async () => {
+    const { state } = await start(); await callback(state)
+    vi.stubEnv('MAGALU_ENVIRONMENT', 'sandbox')
+    expect((await complete(state)).statusCode).toBe(400)
+    expect(provider).not.toHaveBeenCalled()
+  })
+  it('does not mark sandbox connected or save credentials when onboarding fails or returns another channel', async () => {
+    vi.stubEnv('MAGALU_ENVIRONMENT', 'sandbox')
+    for (const onboarding of [new Response(JSON.stringify({ message: 'private-token' }), { status: 403 }), new Response(JSON.stringify({ seller_id: `GENPUB.${tenant}`, channel_id: 'other' }))]) {
+      provider.mockResolvedValueOnce(new Response(JSON.stringify({ ...token(), scope: MAGALU_SANDBOX_SCOPES.join(' ') }))).mockResolvedValueOnce(onboarding)
+      const { state } = await start(); await callback(state)
+      const response = await complete(state)
+      expect(response.statusCode).toBe(502)
+      expect(response.body).not.toContain('private-token')
+      expect(db.marketplaceCredential.upsert).not.toHaveBeenCalled()
+    }
   })
 })
