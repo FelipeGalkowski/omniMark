@@ -24,7 +24,7 @@ export async function diagnoseMagalu(db: PrismaClient, request: typeof fetch = f
   const from = fullSync ? historyStart : new Date(Math.max(historyStart.getTime(), account.syncTo!.getTime() - 15 * 60_000))
   const field = fullSync ? 'purchased_at' : 'updated_at'
   const query = new URLSearchParams({ [`${field}__gte`]: from.toISOString(), [`${field}__lte`]: to.toISOString(), _limit: '50', _offset: '0', _sort: 'purchased_at:asc' })
-  const response = await request(`https://api.magalu.com/seller/v1/orders?${query}`, { redirect: 'error', headers: { Authorization: `Bearer ${tokens.accessToken}` }, signal: AbortSignal.timeout(20000) })
+  const response = await request(`https://api.magalu.com/seller/v1/orders?${query}`, { redirect: 'error', headers: { Authorization: `Bearer ${tokens.accessToken}`, 'X-Tenant-Id': `GENPUB.${account.externalId}` }, signal: AbortSignal.timeout(20000) })
   if (response.ok) {
     await response.body?.cancel()
     return { operation: 'magalu.orders.list', providerStatus: response.status, detail: 'Consulta aceita pela Magalu. Diagnóstico concluído sem importar dados.' }

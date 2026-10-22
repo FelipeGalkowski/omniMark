@@ -113,6 +113,8 @@ Os conectores atuais importam inicialmente até 12 meses e depois consultam pedi
 
 ### Diagnóstico Magalu no stage
 
+As consultas de pedidos enviam `Authorization: Bearer ...` e `X-Tenant-Id: GENPUB.<uuid>`. O UUID vem da conta vinculada e é conferido contra a identidade da autorização antes da consulta; não há variável de ambiente adicional para esse cabeçalho.
+
 Nos Runtime Logs do Coolify, procure `ORDER_SYNC_FAILED` com `marketplace: MAGALU`. O diagnóstico preserva o status HTTP do provedor, campos e códigos de erro reconhecidos nos formatos `detail` e `details`, além do `X-Request-ID` quando for um UUID válido. Mensagens livres, valores enviados e dados de compradores não são registrados.
 
 Para reproduzir somente a primeira consulta da sincronização, execute no terminal do container do stage:

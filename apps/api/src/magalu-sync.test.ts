@@ -73,6 +73,8 @@ it('refreshes and saves rotated credentials before the API call, imports atomica
   expect(await syncMagaluAccount(db, 'account', request, { lease: 'lease' })).toEqual({ orders: 1, incomplete: 1 })
   expect(request.mock.calls[0][0]).toBe('https://id.magalu.com/oauth/token')
   expect(request.mock.calls[0][1].body.get('grant_type')).toBe('refresh_token')
+  expect(new Headers(request.mock.calls[1][1].headers).get('X-Tenant-Id')).toBe(`GENPUB.${tenant}`)
+  expect(new Headers(request.mock.calls[0][1].headers).has('X-Tenant-Id')).toBe(false)
   const cipher = db.marketplaceCredential.updateMany.mock.calls[0][0].data.tokenCipher
   expect(JSON.parse(vault(key).open(cipher)).refreshToken).toBe('rotated')
   expect(db.order.upsert).toHaveBeenCalledOnce()
@@ -135,5 +137,32 @@ it('reads standard Magalu details and request ID without logging arbitrary field
   expect(failure.diagnostic).toEqual({ reference: providerReference, operation: 'magalu.orders.list', providerStatus: 422,
     detail: 'Campos rejeitados: _limit. Regras: INVALID_PARAMETER_VALUE, UNPROCESSABLE_ENTITY.' })
   expect(JSON.stringify(failure.diagnostic)).not.toMatch(/private|PRIVATE|header\./)
+  expect(db.$transaction).not.toHaveBeenCalled()
+})
+
+it.each([false, true])('sends the authenticated tenant on every order page, including incremental=%s', async incremental => {
+  const { db, account } = database()
+  if (incremental) { account.lastFullSyncAt = new Date(); account.syncTo = new Date(Date.now() - 300000) }
+  const request = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const headers = new Headers(init?.headers)
+    if (headers.get('X-Tenant-Id') !== `GENPUB.${tenant}`) return response({ detail: [{ loc: ['header', 'X-Tenant-Id'], type: 'missing', msg: 'Field required' }] }, 422)
+    expect(headers.get('Authorization')).toMatch(/^Bearer header\./)
+    const offset = new URL(String(input)).searchParams.get('_offset')
+    return offset === '0' ? response(page([order('1')], 0, '?_offset=1&_limit=50')) : response(page([order('2')], 1))
+  })
+  expect(await syncMagaluAccount(db, 'account', request, { lease: 'lease' })).toEqual({ orders: 2, incomplete: 2 })
+  expect(request).toHaveBeenCalledTimes(2)
+  expect(db.order.upsert).toHaveBeenCalledTimes(2)
+})
+
+it.each([
+  { detail: [{ loc: ['header', 'X-Tenant-Id'], type: 'missing' }] },
+  { details: [{ loc: ['header', 'X-Tenant-Id'], type: 'missing' }] },
+  { details: [{ location: ['header', 'X-Tenant-Id'], type: 'missing' }] },
+  { details: [{ location: 'header', field: 'X-Tenant-Id' }] },
+])('identifies the missing tenant header in validation metadata: %j', async payload => {
+  const { db } = database()
+  const failure = await syncMagaluAccount(db, 'account', vi.fn(async () => response(payload, 422)), { lease: 'lease' }).catch(error => error)
+  expect(failure.diagnostic.detail).toBe('Campos rejeitados: X-Tenant-Id.')
   expect(db.$transaction).not.toHaveBeenCalled()
 })

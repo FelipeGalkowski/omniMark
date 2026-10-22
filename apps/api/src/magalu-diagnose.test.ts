@@ -39,7 +39,10 @@ it('does not rotate an expired token or guess which account to inspect', async (
 })
 it('discards successful response data instead of exposing orders or importing them', async () => {
   const { db } = database()
-  const result = await diagnoseMagalu(db, vi.fn(async () => new Response(JSON.stringify({ results: [{ customer: 'private customer' }] }), { status: 200 })))
+  const result = await diagnoseMagalu(db, vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+    if (new Headers(init?.headers).get('X-Tenant-Id') !== `GENPUB.${tenant}`) return new Response(JSON.stringify({ detail: [{ loc: ['header', 'X-Tenant-Id'], msg: 'Field required', type: 'missing' }] }), { status: 422 })
+    return new Response(JSON.stringify({ results: [{ customer: 'private customer' }] }), { status: 200 })
+  }))
   expect(result.providerStatus).toBe(200)
   expect(JSON.stringify(result)).not.toContain('private')
 })
