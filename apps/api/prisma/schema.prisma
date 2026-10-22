@@ -113,10 +113,15 @@ model MarketplaceAccount {
   syncFrom DateTime?
   syncTo DateTime?
   syncError String?
+  nextSyncAt DateTime? @default(now())
+  syncAttemptAt DateTime?
+  syncFailures Int @default(0)
+  lastFullSyncAt DateTime?
   syncLock String?
   syncLockUntil DateTime?
   @@unique([marketplace, externalId])
   @@index([companyId])
+  @@index([marketplace, status, nextSyncAt])
 }
 model MarketplaceCredential {
   accountId String @id

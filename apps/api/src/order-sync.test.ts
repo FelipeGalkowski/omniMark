@@ -156,6 +156,37 @@ describe('Importação de pedidos', () => {
     await expect(syncAccount(db, accountId, request)).rejects.toMatchObject({ code: 409 })
     expect(request).not.toHaveBeenCalled()
   })
+  it('consulta alterações entre importações completas sem reduzir a cobertura do histórico', async () => {
+    vi.stubEnv('TOKEN_ENCRYPTION_KEY', key)
+    const db = database(), account = await db.marketplaceAccount.findUniqueOrThrow()
+    account.lastFullSyncAt = new Date(); account.syncTo = new Date(Date.now() - 300000); account.syncFrom = new Date('2025-10-21T00:00:00Z')
+    db.marketplaceAccount.findUniqueOrThrow.mockResolvedValue(account)
+    const request = vi.fn(async (_input: string | URL | Request) => new Response(JSON.stringify({ results: [], paging: { total: 0 } })))
+    await syncAccount(db, accountId, request)
+    const params = new URL(String(request.mock.calls[0][0])).searchParams
+    expect(params.has('order.date_last_updated.from')).toBe(true)
+    expect(params.has('order.date_created.from')).toBe(false)
+    const persisted = db.marketplaceAccount.updateMany.mock.calls.find(([args]: any[]) => args.data.lastSyncAt)[0]
+    expect(persisted.data.syncFrom).toEqual(account.syncFrom)
+    expect(persisted.data.lastFullSyncAt).toBeUndefined()
+  })
+  it('respeita o Retry-After sem insistir na API quando o fornecedor limita consultas', async () => {
+    vi.stubEnv('TOKEN_ENCRYPTION_KEY', key)
+    const db = database(), request = vi.fn(async () => new Response('{}', { status: 429, headers: { 'Retry-After': '900' } }))
+    await expect(syncAccount(db, accountId, request)).rejects.toMatchObject({ code: 429, retryAfterMs: 900000 })
+    expect(request).toHaveBeenCalledOnce(); expect(db.order.upsert).not.toHaveBeenCalled()
+  })
+  it('o botão agenda e responde sem esperar a importação em segundo plano', async () => {
+    const app = Fastify(), enqueue = vi.fn(async () => {})
+    const db: any = { companyMember: { findUnique: vi.fn(async () => ({ role: 'OWNER' })) }, marketplaceAccount: { findFirst: vi.fn(async () => ({ id: accountId, marketplace: 'MAGALU' })) } }
+    registerOrderSync(app, db, async (req: any) => { req.currentUser = { id: 'user' } }, 'https://example.test', { enqueue })
+    try {
+      const response = await app.inject({ method: 'POST', url: `/companies/${companyId}/accounts/${accountId}/sync`, headers: { origin: 'https://example.test' } })
+      expect(response.statusCode).toBe(202); expect(response.json().queued).toBe(true)
+      expect(enqueue).toHaveBeenCalledWith(accountId)
+      expect(db.marketplaceAccount.findFirst.mock.calls[0][0].where.marketplace).toBeUndefined()
+    } finally { await app.close() }
+  })
   it('nega leitura sem vínculo e sincronização por leitor ou origem externa', async () => {
     const app = Fastify()
     const db: any = { companyMember: { findUnique: vi.fn(async () => null) } }

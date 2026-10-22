@@ -50,7 +50,7 @@ A lixeira em Contas permite que proprietários e administradores desconectem uma
 - Sessões por cookie HttpOnly e senhas protegidas com Argon2.
 - Empresas com acesso por vínculo e papel.
 - OAuth do Mercado Livre com PKCE e tokens criptografados no servidor.
-- Importação manual de pedidos do Mercado Livre em Contas → Atualizar dados, com renovação de tokens, paginação, envios, reembolsos e consulta de devoluções.
+- Importação automática de pedidos Mercado Livre e Magalu, com renovação de tokens, paginação e tentativas após falhas. No Mercado Livre, consulta também envios, reembolsos e devoluções.
 - Pedidos e indicadores alimentados pelos registros importados, com identificação de dados indisponíveis e cobertura do período.
 - Demonstração isolada com dados fictícios.
 
@@ -93,11 +93,33 @@ Os códigos são armazenados como HMAC vinculado ao usuário e à tentativa, e o
 
 Validação em stage após configurar a chave: cadastre um e-mail de teste sob seu controle, confirme o código, entre, solicite recuperação, abra o link e defina outra senha. Confira que a sessão antiga foi encerrada, que a nova senha entra e que reutilizar o link falha. Não publique os códigos ou links. O envio real depende dessas variáveis e deve ser validado com a sua caixa de e-mail.
 
-## Preparação da conexão Magalu
+## Sincronização automática de pedidos
+
+O servidor inicia a primeira importação após conectar ou reconectar uma loja. Depois de uma importação bem-sucedida, agenda a próxima para cinco minutos depois. Não é preciso manter o navegador aberto nem configurar cron no Coolify. O botão Atualizar dados solicita uma execução adicional e responde HTTP 202; a requisição não fica aberta durante a importação. A tela consulta o andamento a cada 15 segundos enquanto está visível e só relê os pedidos quando a última importação muda.
+
+O padrão já funciona sem novas variáveis. Para personalizar no Coolify, use somente runtime:
+
+```text
+ORDER_SYNC_ENABLED=true
+ORDER_SYNC_INTERVAL_MINUTES=5
+ORDER_SYNC_CONCURRENCY=2
+```
+
+O intervalo aceita de 2 a 60 minutos e a concorrência de 1 a 4 lojas por processo. `ORDER_SYNC_ENABLED=false` pausa novas execuções. O intervalo é contado após o término de cada importação; uma importação longa pode atrasar a próxima. Falhas aumentam a espera progressivamente até uma hora, respeitando um `Retry-After` maior do fornecedor. Autorizações revogadas ficam aguardando reconexão, sem tentativas infinitas.
+
+Agendamentos e contadores de falhas ficam no PostgreSQL. Cada execução reserva atomicamente a loja por até 15 minutos, e a gravação confere o proprietário da reserva antes de publicar dados. Outra instância não importa a mesma loja simultaneamente. Após uma queda abrupta, o trabalho pendente volta a ser elegível quando a reserva expira. As importações têm limites de tempo e volume; falhas preservam a importação anterior.
+
+Os conectores atuais importam inicialmente até 12 meses e depois consultam pedidos modificados com sobreposição de 15 minutos. Uma reconciliação completa diária também revisita mudanças de entrega/devolução que não atualizem o pedido. A normalização mantém a cobertura do histórico em importações incrementais.
+
+`apps/api/src/sync-contract.ts` define o contrato dos conectores. Para Shopee, Amazon ou outro canal, implemente a leitura, normalização, renovação e persistência e registre o adaptador em `sync-adapters.ts`. Ele passa a usar o mesmo agendador, reservas e tentativas automaticamente. Shopee e Amazon continuam sem conector real; não são anunciados como sincronizados nem consultados por um adaptador fictício. Cada conector deve salvar somente após ler todas as páginas e validar a identidade da loja.
+
+As fontes usadas para os filtros e formatos estão na [busca de pedidos Mercado Livre](https://developers.mercadolivre.com.br/pt_br/gerenciamento-de-vendas), [pedidos Magalu](https://developers.magalu.com/docs/apis/orders/ref/seller-v-1-get-order-list) e [renovação Magalu](https://developers.magalu.com/docs/first-steps/create-an-application/authentication-authorization/index.html).
+
+## Conexão Magalu
 
 As rotas públicas `/termos` e `/privacidade` funcionam sem login, inclusive por acesso direto na imagem de produção. Os textos estão identificados como provisórios para revisão de Felipe Galkowski e descrevem o ambiente de homologação. O contato público informado pelo responsável é `felipegalk@outlook.com`; `LEGAL_CONTACT_EMAIL` permite substituí-lo em runtime. Antes de aceitar lojas de terceiros em produção, revise o conteúdo e a retenção real de logs/backups. Estas páginas não afirmam que o serviço já passou por revisão jurídica.
 
-A conexão OAuth do Magalu está disponível em Contas → Conectar conta → Magalu. Esta etapa armazena a autorização; a importação de pedidos Magalu e sua renovação de tokens durante a importação serão implementadas separadamente. O botão de atualização continua desabilitado para esse canal e nenhum pedido fictício é exibido para uma conta real.
+A conexão OAuth do Magalu está disponível em Contas → Conectar conta → Magalu. Após autorizar a organização da loja, o servidor importa seus pedidos automaticamente, renova os tokens quando necessário e agenda as próximas consultas. O conector usa o total informado no pedido e seu normalizador monetário, evita somar o frete duas vezes e não armazena dados de compradores. Reembolsos e devoluções Magalu continuam identificados como indisponíveis até a conciliação específica desses recursos. A validação com pedidos reais da loja permanece necessária.
 
 Após publicar e revisar as páginas, crie o cliente pelo IDM (PowerShell, em uma linha):
 
@@ -124,7 +146,7 @@ A auditoria de dependências ainda aponta avisos na cadeia Prisma/deepmerge-ts e
 
 A importação consulta até 12 meses e 10 mil pedidos por conta, sem publicar uma lista parcial caso a paginação falhe. Os pedidos são atualizados por conta e identificador externo; uma falha de consulta preserva a sincronização anterior. Frete compartilhado sem conciliação, reembolsos ausentes e devoluções com estado não reconhecido aparecem como indisponíveis. O faturamento inclui o frete cobrado do comprador e não representa lucro ou saldo a receber.
 
-A sincronização de pedidos ainda é manual e mantém a requisição aberta durante o processamento (até dez minutos), portanto grandes históricos podem ultrapassar o timeout do proxy. Processamento de pedidos em fila e notificações automáticas de marketplace permanecem pendentes. A validação ponta a ponta com pedidos da conta conectada também está pendente.
+A sincronização periódica roda em segundo plano. Notificações automáticas por webhook de marketplace e importações de históricos acima de 10 mil pedidos por conta permanecem pendentes. A validação ponta a ponta com pedidos das contas conectadas também está pendente.
 
 Para validar em homologação, conecte um vendedor de teste do Mercado Livre e realize compras com outro usuário de teste. Confira os IDs, totais, cancelamentos e reembolsos entre o Mercado Livre e o painel; repita a atualização para verificar que não há duplicação. Uma conta sem pedidos deve produzir uma lista vazia, sem carregar os dados fictícios da demonstração. Consulte a [documentação de testes do Mercado Livre](https://developers.mercadolivre.com.br/pt_br/realizacao-de-testes/realizacao-de-testes).
 

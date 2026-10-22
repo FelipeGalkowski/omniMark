@@ -147,7 +147,9 @@ describe('Magalu OAuth', () => {
     db.marketplaceAccount.findUnique.mockResolvedValue({ id: 'account', companyId })
     expect((await complete(state)).statusCode).toBe(200)
     expect(db.marketplaceAccount.create).not.toHaveBeenCalled()
-    expect(db.marketplaceAccount.update).toHaveBeenCalledWith({ where: { id: 'account' }, data: { status: 'CONNECTED' } })
+    expect(db.marketplaceAccount.update).toHaveBeenCalledWith({ where: { id: 'account' }, data: {
+      status: 'CONNECTED', syncError: null, syncFailures: 0, nextSyncAt: expect.any(Date),
+    } })
   })
   it.each(['missing-scope', 'invalid-jwt', 'provider-error', 'timeout'])('does not save tokens or expose secrets for %s', async failure => {
     const { state } = await start(); await callback(state)

@@ -12,6 +12,8 @@ import { registerMercadoLivre } from './mercadolivre.js'
 import { registerMagalu } from './magalu.js'
 import { registerLegalPages } from './legal.js'
 import { registerOrderSync } from './order-sync.js'
+import { orderSyncAdapters } from './sync-adapters.js'
+import { createSyncService, registerSyncWorker } from './sync-service.js'
 import { registerAccounts } from './accounts.js'
 import { registerWeb, rewriteApiUrl } from './web.js'
 
@@ -29,6 +31,8 @@ const secure = process.env.NODE_ENV === 'production'
 const cookieName = secure ? '__Host-omnimark_session' : 'omnimark_session'
 const authenticated = registerAuthentication(app, db, { origin, cookieName, secure })
 registerEmailWorker(app, db)
+const syncService = createSyncService(db, orderSyncAdapters, undefined, fetch, details => app.log.warn(details, 'ORDER_SYNC_FAILED'))
+registerSyncWorker(app, syncService)
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof z.ZodError) return reply.code(400).send({ error: 'Dados inválidos', details: error.flatten() })
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return reply.code(409).send({ error: 'Este registro já existe.' })
@@ -61,7 +65,9 @@ app.get('/companies/:id/accounts', { preHandler: authenticated }, async (req: an
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
   const member = await db.companyMember.findUnique({ where: { userId_companyId: { userId: req.currentUser.id, companyId: id } } })
   if (!member) return reply.code(404).send({ error: 'Empresa não encontrada' })
-  return db.marketplaceAccount.findMany({ where: { companyId: id }, select: { id: true, marketplace: true, label: true, status: true, createdAt: true, lastSyncAt: true, syncFrom: true, syncTo: true, syncError: true } })
+  reply.header('Cache-Control', 'no-store')
+  const accounts = await db.marketplaceAccount.findMany({ where: { companyId: id }, select: { id: true, marketplace: true, label: true, status: true, createdAt: true, lastSyncAt: true, syncFrom: true, syncTo: true, syncError: true, nextSyncAt: true, syncAttemptAt: true, syncLockUntil: true } })
+  return accounts.map(({ nextSyncAt, syncAttemptAt, syncLockUntil, ...account }) => ({ ...account, synchronization: syncService.describe({ ...account, nextSyncAt, syncAttemptAt, syncLockUntil }) }))
 })
 app.get('/companies/:id/dashboard', { preHandler: authenticated }, async (req: any, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params)
@@ -72,7 +78,7 @@ app.get('/companies/:id/dashboard', { preHandler: authenticated }, async (req: a
 registerMercadoLivre(app, db, authenticated, cookieName, origin)
 registerMagalu(app, db, authenticated, cookieName, origin)
 registerLegalPages(app)
-registerOrderSync(app, db, authenticated, origin)
+registerOrderSync(app, db, authenticated, origin, syncService)
 registerAccounts(app, db, authenticated, origin)
 if (process.env.SERVE_WEB === 'true') await registerWeb(app, process.env.WEB_DIST_PATH ?? '../web/dist')
 app.addHook('onClose', async () => { await db.$disconnect() })

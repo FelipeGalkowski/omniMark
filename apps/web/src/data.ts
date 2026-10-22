@@ -31,6 +31,14 @@ export interface Account {
   syncFrom?: Date | null
   syncTo?: Date | null
   errorMsg?: string
+  synchronization?: {
+    supported: boolean
+    enabled: boolean
+    state: 'unsupported' | 'disabled' | 'pending' | 'running' | 'scheduled' | 'idle' | 'error' | 'reconnect_needed'
+    intervalMinutes: number
+    nextAt: string | null
+    attemptedAt: string | null
+  }
 }
 
 export interface OrderItem {

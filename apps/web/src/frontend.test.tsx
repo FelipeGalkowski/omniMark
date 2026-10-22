@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Application from './Application'
 import LoginPage from './LoginPage'
@@ -26,7 +26,7 @@ describe('Frontend integrado', () => {
       return { body: [] }
     })
     render(<Application />)
-    await screen.findByText('Conta conectada ao Magalu. A importação de pedidos está em preparação.')
+    await screen.findByText('Conta conectada ao Magalu. A importação será iniciada automaticamente.')
     expect(window.location.hash).toBe('')
     expect(fetch.mock.calls.filter(([path]) => path === '/api/integrations/magalu/complete')).toHaveLength(1)
     expect(fetch.mock.calls.some(([path]) => path.includes('/mercadolivre/'))).toBe(false)
@@ -56,7 +56,7 @@ describe('Frontend integrado', () => {
     await action.click(screen.getByRole('button', { name: 'Contas' }))
     await action.click(screen.getByRole('button', { name: 'Conectar nova conta' }))
     await action.click(screen.getByRole('button', { name: 'Magalu' }))
-    expect(screen.getByText(/Selecione a organização/).textContent).toContain('importação de pedidos ainda está em preparação')
+    expect(screen.getByText(/A importação começa automaticamente/)).toBeTruthy()
     await action.click(screen.getByRole('button', { name: 'Autorizar com o ID Magalu' }))
     expect((await screen.findByRole('alert')).textContent).toBe('Configure as credenciais do Magalu.')
     expect(fetch.mock.calls.some(([path, init]) => path.endsWith('/magalu/authorize') && init?.method === 'POST')).toBe(true)
@@ -80,6 +80,28 @@ describe('Frontend integrado', () => {
     await action.click(screen.getByRole('button', { name: 'Pedidos' }))
     await screen.findByText('123456')
     expect(screen.queryByText(/Dados fictícios/)).toBeNull()
+  })
+  it('mostra novos pedidos por consulta periódica sem solicitar sincronização manual e evita reler pedidos sem alterações', async () => {
+    let synced = false
+    const interval = vi.spyOn(globalThis, 'setInterval')
+    const fetch = mockFetch(path => {
+      if (path === '/api/auth/me') return { body: { user } }
+      if (path === '/api/companies') return { body: [{ id: 'company-real', name: 'Empresa real', role: 'OWNER' }] }
+      if (path.endsWith('/accounts')) return { body: [{ id: 'account-real', marketplace: 'MERCADO_LIVRE', label: 'Loja', status: 'CONNECTED', lastSyncAt: synced ? '2026-10-21T15:00:00Z' : null }] }
+      if (path.endsWith('/orders')) return { body: { orders: [{ id: 'automatic-123', companyId: 'company-real', accountId: 'account-real', marketplace: 'mercadolivre', date: new Date().toISOString(), status: 'paid', items: [{ name: 'Importado automaticamente', qty: 1, unitPrice: 50 }], shipping: 0, financials: { paymentConfirmed: true, discount: 0, refunds: [], returns: [] } }] } }
+      throw new Error(`Unexpected request: ${path}`)
+    })
+    render(<Application />)
+    await screen.findByText('Aguardando primeira sincronização')
+    const tick = interval.mock.calls.find(([, delay]) => delay === 15000)![0] as () => void
+    synced = true
+    await act(async () => { tick() })
+    await waitFor(() => expect(fetch.mock.calls.filter(([path]) => path.endsWith('/orders'))).toHaveLength(1))
+    await act(async () => { tick() })
+    expect(fetch.mock.calls.filter(([path]) => path.endsWith('/orders'))).toHaveLength(1)
+    expect(fetch.mock.calls.some(([path]) => path.endsWith('/sync'))).toBe(false)
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Pedidos' }))
+    await screen.findByText('automatic-123')
   })
   it('valida o login no servidor, sem aceitar um usuário gravado no armazenamento local', async () => {
     localStorage.setItem('omnimark_users', JSON.stringify([{ ...user }]))
@@ -124,7 +146,7 @@ describe('Frontend integrado', () => {
     expect(screen.queryByText('TechStore Brasil')).toBeNull()
     expect(screen.queryByText(/Dados fictícios de 2025/)).toBeNull()
     await action.click(screen.getByRole('button', { name: 'Contas' }))
-    await screen.findByText(/Atualize os dados para consultar os pedidos/)
+    await screen.findByText(/Atualização automática\./)
     await action.click(screen.getByRole('button', { name: 'Conectar nova conta' }))
     await action.click(screen.getByRole('button', { name: 'Mercado Livre' }))
     await screen.findByText('Autorizar Mercado Livre')
@@ -161,7 +183,7 @@ describe('Frontend integrado', () => {
       return { body: [] }
     })
     render(<Application />)
-    await screen.findByText('Conta conectada ao Mercado Livre. Clique em Atualizar dados para importar seus pedidos.')
+    await screen.findByText('Conta conectada ao Mercado Livre. A importação será iniciada automaticamente.')
     expect(window.location.hash).toBe('')
     await screen.findByText('Contas e Integrações')
     expect(fetch.mock.calls.filter(([path]) => path.endsWith('/complete'))).toHaveLength(1)

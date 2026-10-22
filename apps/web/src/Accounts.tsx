@@ -58,8 +58,8 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
     setFeedback(f => { const n = {...f}; delete n[id]; return n })
     if (!demo) {
       try {
-        const result = await api<{ orders: number; incomplete: number }>(`/companies/${companyId}/accounts/${id}/sync`, { method: 'POST', body: '{}' })
-        setFeedback(f => ({ ...f, [id]: { ok: true, msg: `${result.orders} pedidos sincronizados.${result.incomplete ? ` ${result.incomplete} com dados financeiros incompletos.` : ''}` } }))
+        const result = await api<{ queued?: boolean; message?: string; orders: number; incomplete: number }>(`/companies/${companyId}/accounts/${id}/sync`, { method: 'POST', body: '{}' })
+        setFeedback(f => ({ ...f, [id]: { ok: true, msg: result.queued ? result.message! : `${result.orders} pedidos sincronizados.${result.incomplete ? ` ${result.incomplete} com dados financeiros incompletos.` : ''}` } }))
       } catch (error) {
         setFeedback(f => ({ ...f, [id]: { ok: false, msg: (error as Error).message } }))
       } finally {
@@ -106,7 +106,7 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
       <div style={{ background:"var(--sf3)", border:"1px solid var(--bd)", borderRadius:10, padding:"10px 16px", display:"flex", alignItems:"center", gap:10 }}>
         <Icon name="info" />
         <span style={{ fontSize:12, color:"var(--t2)" }}>
-          {demo ? <><strong>Demonstração:</strong> as conexões aqui são fictícias. As ações simulam uma integração e não acessam os marketplaces.</> : <><strong>Mercado Livre.</strong> Atualize os dados para consultar os pedidos dos últimos 12 meses. Informações indisponíveis serão identificadas no painel.</>}
+          {demo ? <><strong>Demonstração:</strong> as conexões aqui são fictícias. As ações simulam uma integração e não acessam os marketplaces.</> : <><strong>Atualização automática.</strong> A primeira importação começa após conectar a loja. As próximas atualizações acontecem em segundo plano, mesmo com o painel fechado. Informações indisponíveis serão identificadas no painel.</>}
         </span>
       </div>
 
@@ -129,24 +129,34 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
         <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
           {companyAccounts.map(acct => {
             const mkt       = MARKETPLACES.find(m => m.id === acct.marketplace)!
-            const isSyncing = syncing.has(acct.id)
+            const isSyncing = syncing.has(acct.id) || acct.synchronization?.state === 'running'
+            const supported = demo || (acct.synchronization?.supported ?? acct.marketplace === 'mercadolivre')
+            const updateDisabled = isSyncing || (!demo && (!canEdit || !supported || acct.synchronization?.enabled === false))
             const status    = isSyncing ? "syncing" : acct.status
             const cfg       = ACCT_STATUS[status]
             const fb        = feedback[acct.id]
 
             return (
-              <div key={acct.id} style={{ background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:14, padding:"18px 22px", display:"flex", alignItems:"flex-start", gap:16 }}>
+              <div className="account-card" key={acct.id} style={{ background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:14, padding:"18px 22px", display:"flex", alignItems:"flex-start", gap:16 }}>
                 <div style={{ width:40, height:40, borderRadius:10, background:mkt.bg, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, border:`1.5px solid ${mkt.color}` }}>
                   <Icon name="store" size={20} style={{ color:mkt.text }} />
                 </div>
 
-                <div style={{ flex:1, minWidth:0 }}>
+                <div className="account-content" style={{ flex:1, minWidth:0 }}>
                   <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
                     <span style={{ fontWeight:700, fontSize:15, color:"var(--t1)" }}>{acct.name}</span>
                     <AcctStatusBadge status={status} />
                   </div>
                   <div style={{ fontSize:12, color:"var(--t3)", marginTop:3 }}>{mkt.label}</div>
-                  {!demo && acct.marketplace === 'magalu' && <p style={{ fontSize:12, color:'var(--t3)', margin:'8px 0 0' }}>Conexão autorizada. A importação de pedidos do Magalu está em preparação.</p>}
+                  {!demo && <p style={{ fontSize:12, color:'var(--t3)', margin:'8px 0 0' }}>
+                    {!supported ? 'A importação deste marketplace ainda não está disponível.'
+                      : acct.synchronization?.state === 'disabled' ? 'A atualização automática está pausada no servidor.'
+                      : acct.synchronization?.state === 'reconnect_needed' ? 'Reconecte a loja para retomar as atualizações automáticas.'
+                      : acct.synchronization?.state === 'running' ? 'Importando os dados em segundo plano…'
+                      : acct.synchronization?.state === 'scheduled' ? 'Aguardando a próxima importação automática…'
+                      : `Atualização automática a cada ${acct.synchronization?.intervalMinutes ?? 5} minutos.`}
+                    {supported && acct.synchronization?.enabled && acct.synchronization.nextAt && !isSyncing && <> {acct.errorMsg ? 'Próxima tentativa' : 'Próxima atualização'}: {formatDateTime(new Date(acct.synchronization.nextAt))}.</>}
+                  </p>}
 
                   {acct.errorMsg && (
                     <div style={{ marginTop:8, background: acct.status==="error"?"#FEE2E2":"#FEF3C7", border:`1px solid ${acct.status==="error"?"#FCA5A5":"#FCD34D"}`, borderRadius:8, padding:"8px 12px", fontSize:12, color: acct.status==="error"?"#991B1B":"#92400E" }}>
@@ -165,7 +175,7 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
                   </div>
                 </div>
 
-                <div style={{ display:"flex", gap:8, flexShrink:0, flexWrap:"wrap", justifyContent:"flex-end" }}>
+                <div className="account-actions" style={{ display:"flex", gap:8, flexShrink:0, flexWrap:"wrap", justifyContent:"flex-end" }}>
                   {(demo || canEdit) && <button
                     aria-label={`Desconectar ${acct.name}`}
                     title="Desconectar conta"
@@ -181,8 +191,9 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
                   {acct.status !== "reconnect_needed" && (
                     <button
                       onClick={() => triggerUpdate(acct.id)}
-                      disabled={isSyncing || (!demo && (!canEdit || acct.marketplace !== 'mercadolivre'))}
-                      style={{ ...btnSec, fontSize:12, padding:"6px 14px", opacity:isSyncing?0.5:1, cursor:isSyncing?"not-allowed":"pointer" }}
+                      disabled={updateDisabled}
+                      title={!supported ? 'A importação deste marketplace ainda não está disponível.' : 'Solicitar uma atualização adicional. As atualizações periódicas são automáticas.'}
+                      style={{ ...btnSec, fontSize:12, padding:"6px 14px", opacity:updateDisabled?0.5:1, cursor:updateDisabled?"not-allowed":"pointer" }}
                     >
                       {isSyncing ? "Atualizando…" : "Atualizar dados"}
                     </button>
@@ -331,7 +342,8 @@ function ConnectModal({ onClose, onConnect, demo, companyId }: { companyId: stri
 
           {!demo && step === "name" && mkt && <div className="stack-form"><h3>{mkt.label}</h3>{selMkt === 'mercadolivre' || selMkt === 'magalu' ? <>
             <p>Você será encaminhado ao {mkt.label} para autorizar o acesso à sua conta.</p>
-            {selMkt === 'magalu' && <><p>Selecione a organização da sua loja no ID Magalu. Solicitamos leitura de pedidos e entregas. A importação de pedidos ainda está em preparação.</p><p><a href="/termos" target="_blank" rel="noreferrer">Termos de uso</a> · <a href="/privacidade" target="_blank" rel="noreferrer">Privacidade</a></p></>}
+            <p>A importação começa automaticamente após a autorização e continua em segundo plano.</p>
+            {selMkt === 'magalu' && <><p>Selecione a organização da sua loja no ID Magalu. Solicitamos leitura de pedidos e entregas.</p><p><a href="/termos" target="_blank" rel="noreferrer">Termos de uso</a> · <a href="/privacidade" target="_blank" rel="noreferrer">Privacidade</a></p></>}
             {error && <p role="alert">{error}</p>}
             <button disabled={busy} style={btnPri} onClick={authorize}>{busy ? 'Abrindo autorização…' : selMkt === 'magalu' ? 'Autorizar com o ID Magalu' : 'Autorizar no Mercado Livre'}</button>
           </> : <p>A integração com este marketplace ainda está em desenvolvimento.</p>}<button style={btnSec} onClick={onClose}>Fechar</button></div>}

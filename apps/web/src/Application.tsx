@@ -61,7 +61,7 @@ export default function App() {
     setConnectionStatus('info')
     setConnectionMessage(`Concluindo conexão com o ${oauthReturn!.label}…`)
     api<{ companyId: string }>(`/integrations/${oauthReturn!.provider}/complete`, { method: 'POST', body: JSON.stringify({ state: oauthState }) })
-      .then(result => { setCompanyId(result.companyId); setPage('accounts'); setReloadKey(key => key + 1); setConnectionStatus('success'); setConnectionMessage(oauthReturn!.provider === 'magalu' ? 'Conta conectada ao Magalu. A importação de pedidos está em preparação.' : 'Conta conectada ao Mercado Livre. Clique em Atualizar dados para importar seus pedidos.') })
+      .then(result => { setCompanyId(result.companyId); setPage('accounts'); setReloadKey(key => key + 1); setConnectionStatus('success'); setConnectionMessage(`Conta conectada ao ${oauthReturn!.label}. A importação será iniciada automaticamente.`) })
       .catch((failure: Error) => { setConnectionStatus('error'); setConnectionMessage(failure.message) })
   }, [oauthState, user, loading, companies])
   const isDark = themeMode === 'dark' || (themeMode === 'system' && sysDark)
@@ -108,17 +108,33 @@ export default function App() {
     const version = ++requestVersion.current
     setAccounts([]); setOrders([]); setError('')
     setAccountRequest({ companyId, status: 'loading' })
-    api<AccountRecord[]>(`/companies/${companyId}/accounts`, { signal: controller.signal })
-      .then(async records => {
-        const result = records.some(record => record.lastSyncAt) ? await api<{ orders: OrderRecord[] }>(`/companies/${companyId}/orders`, { signal: controller.signal }) : { orders: [] }
+    let inFlight = false
+    let ordersVersion = ''
+    async function refresh() {
+      if (inFlight || controller.signal.aborted) return
+      inFlight = true
+      try {
+        const records = await api<AccountRecord[]>(`/companies/${companyId}/accounts`, { signal: controller.signal })
+        const signature = JSON.stringify(records.map(record => [record.id, record.lastSyncAt]))
+        const result = signature !== ordersVersion ? records.some(record => record.lastSyncAt)
+          ? await api<{ orders: OrderRecord[] }>(`/companies/${companyId}/orders`, { signal: controller.signal }) : { orders: [] } : null
         if (version === requestVersion.current) {
           setAccounts(records.map(record => accountFromApi(record, companyId)))
-          setOrders(result.orders.map(orderFromApi))
+          if (result) setOrders(result.orders.map(orderFromApi))
+          ordersVersion = signature
+          setError('')
           setAccountRequest({ companyId, status: 'ready' })
         }
-      })
-      .catch((failure: Error) => { if (failure.name !== 'AbortError' && version === requestVersion.current) { setError(failure.message); setAccountRequest({ companyId, status: 'error' }) } })
-    return () => { controller.abort(); requestVersion.current++ }
+      } catch (error) {
+        const failure = error as Error
+        if (failure.name !== 'AbortError' && version === requestVersion.current) { setError(failure.message); setAccountRequest({ companyId, status: 'error' }) }
+      } finally { inFlight = false }
+    }
+    void refresh()
+    const visibleRefresh = () => { if (document.visibilityState !== 'hidden') void refresh() }
+    const timer = setInterval(visibleRefresh, 15000)
+    document.addEventListener('visibilitychange', visibleRefresh)
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', visibleRefresh); controller.abort(); requestVersion.current++ }
   }, [user?.id, user?.isDemoUser, companyId, reloadKey])
 
   function handleLogin(next: User) {

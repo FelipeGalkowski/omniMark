@@ -103,7 +103,7 @@ export function registerMagalu(app: FastifyInstance, db: PrismaClient, authentic
         if (existing && existing.companyId !== attempt.companyId) throw new Error('Loja vinculada a outra empresa')
         if (existing?.syncLockUntil && existing.syncLockUntil > new Date()) throw new Error('Sincronização em andamento')
         const account = existing
-          ? await tx.marketplaceAccount.update({ where: { id: existing.id }, data: { status: 'CONNECTED' } })
+          ? await tx.marketplaceAccount.update({ where: { id: existing.id }, data: { status: 'CONNECTED', syncError: null, syncFailures: 0, nextSyncAt: new Date() } })
           : await tx.marketplaceAccount.create({ data: { companyId: attempt.companyId, marketplace: 'MAGALU', externalId: tenant, label: `Magalu · ${tenant.slice(0, 8)}`, status: 'CONNECTED' } })
         const data = { tokenCipher: config.crypt.seal(JSON.stringify({ accessToken: token.access_token, refreshToken: token.refresh_token })), expiresAt: new Date(Date.now() + token.expires_in * 1000) }
         await tx.marketplaceCredential.upsert({ where: { accountId: account.id }, create: { accountId: account.id, ...data }, update: data })

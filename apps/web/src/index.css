@@ -136,3 +136,9 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .kpi-card { min-width: 0; }
 .kpi-card > div { flex-wrap: wrap; }
 .kpi-card span { overflow-wrap: anywhere; }
+
+@media (max-width: 640px) {
+  .account-card { flex-wrap: wrap; gap: 12px !important; }
+  .account-content { flex: 1 1 calc(100% - 56px) !important; overflow-wrap: anywhere; }
+  .account-actions { width: 100%; padding-left: 52px; justify-content: flex-start !important; }
+}
