@@ -9,7 +9,7 @@ const companyId = '2a741c2f-c591-41c3-9bc3-92db19003e1d'
 const tenant = '351d49cf-9394-4b20-8ced-be7e16d65fa5'
 const origin = 'https://stage.example.test'
 const crypt = vault('ab'.repeat(32))
-const jwt = (sub = `GENPUB.${tenant}`, exp = Math.floor(Date.now() / 1000) + 7200) => `header.${Buffer.from(JSON.stringify({ sub, exp })).toString('base64url')}.signature`
+const jwt = (sub = `GENPUB.${tenant}`, exp = Math.floor(Date.now() / 1000) + 7200, aud = ['https://api.magalu.com', 'https://api-sandbox.magalu.com']) => `header.${Buffer.from(JSON.stringify({ sub, exp, aud })).toString('base64url')}.signature`
 const token = () => ({ access_token: jwt(), refresh_token: 'refresh-secret', token_type: 'Bearer', expires_in: 7200, scope: MAGALU_SCOPES.join(' ') })
 let app: ReturnType<typeof Fastify>
 let db: any
@@ -183,6 +183,16 @@ describe('Magalu OAuth', () => {
     expect(provider.mock.calls[1]).toEqual(['https://api-sandbox.magalu.com/v1/samples/onboarding', expect.objectContaining({ method: 'PUT', body: JSON.stringify({ channel_id: MAGALU_SANDBOX_CHANNEL }) })])
     expect(db.marketplaceAccount.findUnique).toHaveBeenCalledWith({ where: { marketplace_externalId_environment: { marketplace: 'MAGALU', externalId: tenant, environment: 'SANDBOX' } } })
     expect(db.marketplaceAccount.create.mock.calls[0][0].data).toMatchObject({ externalId: tenant, environment: 'SANDBOX', magaluSellerId: sellerId, magaluChannelId: MAGALU_SANDBOX_CHANNEL })
+  })
+  it('refuses a sandbox authorization without its audience before onboarding or saving credentials', async () => {
+    vi.stubEnv('MAGALU_ENVIRONMENT', 'sandbox')
+    provider.mockResolvedValueOnce(new Response(JSON.stringify({ ...token(), access_token: jwt(undefined, undefined, ['https://api.magalu.com']), scope: MAGALU_SANDBOX_SCOPES.join(' ') })))
+    const { state } = await start(); await callback(state)
+    const response = await complete(state)
+    expect(response.statusCode).toBe(502)
+    expect(response.json().error).toContain('audiência do sandbox Magalu')
+    expect(provider).toHaveBeenCalledOnce()
+    expect(db.marketplaceCredential.upsert).not.toHaveBeenCalled()
   })
   it('binds the OAuth attempt to its environment and refuses a changed mode before exchanging tokens', async () => {
     const { state } = await start(); await callback(state)

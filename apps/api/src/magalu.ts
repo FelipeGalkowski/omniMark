@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import type { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
 import { digest, vault } from './mercadolivre.js'
-import { magaluEnvironment, MAGALU_READ_SCOPES } from './magalu-environment.js'
+import { magaluEnvironment, magaluHasAudience, MAGALU_READ_SCOPES } from './magalu-environment.js'
 import { onboardMagaluSandbox } from './magalu-sandbox.js'
 import { SyncError } from './order-sync.js'
 
@@ -105,6 +105,8 @@ export function registerMagalu(app: FastifyInstance, db: PrismaClient, authentic
       const token = tokenSchema.parse(await response.json())
       if (!config.scopes.every(scope => token.scope.split(/\s+/).includes(scope))) throw new Error('Permissões insuficientes')
       const tenant = magaluTenant(token.access_token)
+      if (config.environment === 'SANDBOX' && !magaluHasAudience(token.access_token, config.baseUrl)) throw new SyncError(502,
+        'A autorização não inclui a audiência do sandbox Magalu. Atualize a audiência do client no ID Magalu para https://api-sandbox.magalu.com e inicie uma nova conexão.')
       const seller = config.environment === 'SANDBOX' ? await onboardMagaluSandbox(token.access_token, tenant, request) : { sellerId: tenant, channelId: null }
       await db.$transaction(async tx => {
         const current = await tx.companyMember.findUnique({ where: { userId_companyId: { userId: attempt.userId, companyId: attempt.companyId } } })

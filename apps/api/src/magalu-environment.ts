@@ -8,6 +8,17 @@ export const MAGALU_SANDBOX_SCOPES = [...MAGALU_READ_SCOPES, 'open:order-logisti
   'open:portfolio-stocks-seller:read', 'open:portfolio-stocks-seller:write']
 export const MAGALU_SANDBOX_CHANNEL = '5f62650a-0039-4d65-9b96-266d498c03bd'
 
+// Metadata from a provider-issued token; never use this to authenticate browser input.
+export function magaluHasAudience(accessToken: string, expected: string) {
+  try {
+    const parts = accessToken.split('.')
+    if (parts.length !== 3) return false
+    const claims = z.object({ aud: z.union([z.string(), z.array(z.string())]) }).parse(JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')))
+    const audiences = Array.isArray(claims.aud) ? claims.aud : claims.aud.split(/\s+/)
+    return audiences.includes(expected)
+  } catch { return false }
+}
+
 export function magaluEnvironment() {
   const name = z.enum(['production', 'sandbox']).default('production').parse(process.env.MAGALU_ENVIRONMENT)
   return name === 'sandbox'

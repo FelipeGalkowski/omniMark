@@ -1,7 +1,17 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { activeMarketplaceAccounts, magaluAccountContext, magaluEnvironment, magaluRequestHeaders, MAGALU_SANDBOX_CHANNEL } from './magalu-environment.js'
+import { activeMarketplaceAccounts, magaluAccountContext, magaluEnvironment, magaluHasAudience, magaluRequestHeaders, MAGALU_SANDBOX_CHANNEL } from './magalu-environment.js'
 afterEach(() => vi.unstubAllEnvs())
 const tenant = '351d49cf-9394-4b20-8ced-be7e16d65fa5'
+it('requires the exact sandbox audience in provider token metadata', () => {
+  const token = (aud: unknown) => `header.${Buffer.from(JSON.stringify({ aud })).toString('base64url')}.signature`
+  const expected = 'https://api-sandbox.magalu.com'
+  expect(magaluHasAudience(token([expected]), expected)).toBe(true)
+  expect(magaluHasAudience(token(expected), expected)).toBe(true)
+  expect(magaluHasAudience(token('https://api.magalu.com'), expected)).toBe(false)
+  expect(magaluHasAudience(token(`${expected}.example.test`), expected)).toBe(false)
+  expect(magaluHasAudience(token(undefined), expected)).toBe(false)
+  expect(magaluHasAudience('invalid', expected)).toBe(false)
+})
 it('defaults existing accounts to production and refuses unknown API environments', () => {
   vi.stubEnv('MAGALU_ENVIRONMENT', 'production')
   expect(magaluAccountContext({ externalId: tenant }).baseUrl).toBe('https://api.magalu.com')

@@ -167,6 +167,8 @@ Para um client já criado, atualize as audiences e acrescente as permissões de 
 
 O comando `update` não aceita `--scopes`; as permissões adicionais são cadastradas com `add-scope`. Os dois escopos de leitura de pedidos/entregas do cadastro original também são necessários.
 
+Adicionar escopos não adiciona a audiência de sandbox. Se ela estiver ausente no token, a API de pedidos pode responder 401 mesmo com onboarding aceito. O callback confere a audiência antes do onboarding e da gravação da conexão e exibe uma mensagem específica para atualizar o client. Tokens já emitidos precisam ser substituídos por uma nova autorização depois da alteração do client.
+
 Depois do deploy, use Contas → Conectar conta → Magalu e autorize novamente, agora no sandbox. A conta pessoal do ID Magalu pode ser usada neste ambiente. O callback solicita as nove permissões de teste e prepara o vendedor fictício pelo endpoint fixo de onboarding. O identificador desse vendedor é salvo separadamente da identidade pessoal da autorização. O painel identifica a conta e os pedidos como fictícios e informa que eles podem compor os indicadores durante os testes.
 
 Para criar o catálogo, execute no Terminal do aplicativo de stage no Coolify:
