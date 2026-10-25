@@ -198,26 +198,25 @@ function OrderPanel({ order, accounts, onClose }: { order: Order; accounts: Acco
 
           <div>
             <div style={{ fontSize:11, fontWeight:700, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>Itens</div>
-            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
-              <thead>
-                <tr style={{ borderBottom:"1px solid var(--bd)" }}>
-                  <th style={{ textAlign:"left", padding:"0 0 6px", fontSize:11, fontWeight:700, color:"var(--t3)" }}>Produto</th>
-                  <th style={{ textAlign:"center", padding:"0 0 6px", fontSize:11, fontWeight:700, color:"var(--t3)", width:36 }}>Qtd</th>
-                  <th style={{ textAlign:"right", padding:"0 0 6px", fontSize:11, fontWeight:700, color:"var(--t3)", whiteSpace:"nowrap" }}>Unit.</th>
-                  <th style={{ textAlign:"right", padding:"0 0 6px", fontSize:11, fontWeight:700, color:"var(--t3)" }}>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {order.items.map((item, i) => (
-                  <tr key={i} style={{ borderBottom:i<order.items.length-1?"1px solid var(--bd)":"none" }}>
-                    <td style={{ padding:"8px 0", color:"var(--t1)", lineHeight:1.3 }}>{item.name}</td>
-                    <td style={{ padding:"8px 0", textAlign:"center", color:"var(--t2)" }}>{item.qty}</td>
-                    <td style={{ padding:"8px 0", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", fontSize:12, color:"var(--t2)", whiteSpace:"nowrap" }}>{formatBRLFull(item.unitPrice)}</td>
-                    <td style={{ padding:"8px 0", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", fontSize:12, color:"var(--t1)", fontWeight:600, whiteSpace:"nowrap" }}>{formatBRLFull(item.qty * item.unitPrice)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <ul aria-label="Itens do pedido" style={{ listStyle:"none", padding:0, margin:0, display:"flex", flexDirection:"column", gap:12 }}>
+              {order.items.map((item, i) => (
+                <li key={i} style={{ border:"1px solid var(--bd)", borderRadius:10, padding:14, minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:500, color:"var(--t1)", lineHeight:1.5, overflowWrap:"anywhere" }}>{item.name}</div>
+                  <dl style={{ display:"flex", flexWrap:"wrap", gap:"12px 20px", margin:"14px 0 0" }}>
+                    {[
+                      ['Quantidade', item.qty.toLocaleString('pt-BR')],
+                      ['Valor unitário', formatBRLFull(item.unitPrice)],
+                      ['Total do item', formatBRLFull(item.qty * item.unitPrice)],
+                    ].map(([label, value]) => (
+                      <div key={label} style={{ flex:"1 0 auto", maxWidth:"100%" }}>
+                        <dt style={{ fontSize:11, color:"var(--t3)", marginBottom:5 }}>{label}</dt>
+                        <dd style={{ margin:0, fontSize:12, color:"var(--t1)", fontWeight:label === 'Total do item' ? 700 : 500, fontFamily:"'JetBrains Mono',monospace", overflowWrap:"anywhere" }}>{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </li>
+              ))}
+            </ul>
           </div>
 
           <div style={{ borderTop:"1px solid var(--bd)", paddingTop:12, display:"flex", flexDirection:"column", gap:6 }}>

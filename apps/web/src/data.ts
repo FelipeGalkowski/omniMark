@@ -360,9 +360,9 @@ export function getMonthsInRange(from: Date, to: Date): Array<{ label: string; y
 }
 
 
-/** Full BRL, 0 decimals — for KPI cards */
+/** Full BRL with cents — for KPI cards and chart values. */
 export function formatBRL(v: number): string {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v)
+  return formatBRLFull(v)
 }
 
 /** Full BRL, 2 decimals — for tables, panels, tooltips */

@@ -16,7 +16,8 @@ describe('Indicadores de vendas', () => {
   it('inclui frete do comprador e desconta somente o desconto informado', () => {
     expect(orderSale(order())).toBe(220)
     expect(orderSale(order({ shipping: 0 }))).toBe(190)
-    expect(formatBRL(29000).replace(/\s/g, ' ')).toBe('R$ 29.000')
+    expect(formatBRL(29000).replace(/\s/g, ' ')).toBe('R$ 29.000,00')
+    expect(formatBRL(99.9).replace(/\s/g, ' ')).toBe('R$ 99,90')
   })
   it('mantém centavos sem acumular erro de ponto flutuante', () => {
     const result = summarizeOrders([order({ items: [{ name: 'A', qty: 3, unitPrice: 0.1 }], shipping: 0.2, financials: { paymentConfirmed: true, discount: 0.1, refunds: [], returns: [] } })])

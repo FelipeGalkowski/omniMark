@@ -10,6 +10,15 @@ beforeEach(() => vi.stubGlobal('ResizeObserver', class { observe() {} unobserve(
 const text = (label: string) => screen.getByRole('group', { name: label }).textContent?.replace(/\s/g, ' ')
 
 describe('Cards de indicadores', () => {
+  it('preserva centavos no faturamento consolidado, por canal e nos ajustes', () => {
+    const order: Order = { ...paid, status: 'paid', items: [{ name: 'Produto', qty: 1, unitPrice: 99.9 }], shipping: 0, financials: { paymentConfirmed: true, discount: 0, refunds: [{ id: 'partial', amount: 0.15, status: 'confirmed', date: paid.date }], returns: [] } }
+    render(<Overview companyId="company" accounts={[account]} orders={[order]} onAccounts={() => {}} />)
+    expect(text('Faturamento de vendas')).toContain('R$ 99,90')
+    expect(text('Reembolsos confirmados')).toContain('R$ 0,15')
+    expect(text('Vendas após reembolsos')).toContain('R$ 99,75')
+    const channelValue = screen.getByText('Faturamento').nextElementSibling
+    expect(channelValue?.textContent?.replace(/\s/g, ' ')).toBe('R$ 99,90')
+  })
   it('identifica o sandbox e exclui contas de outro ambiente dos indicadores', () => {
     const sandbox = { ...account, marketplace: 'magalu' as const, environment: 'SANDBOX' as const, active: true }
     const inactive = { ...account, id: 'inactive', name: 'Conta inativa', active: false, lastSync: new Date() }
