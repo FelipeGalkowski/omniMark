@@ -14,9 +14,11 @@ afterEach(() => vi.unstubAllEnvs())
 
 it('makes exactly one read-only request and returns only safe diagnostics', async () => {
   const { db } = database()
-  const request = vi.fn(async () => new Response(JSON.stringify({ slug: 'UNPROCESSABLE_ENTITY', details: [{ field: '_limit', slug: 'INVALID_PARAMETER_VALUE', message: 'private-refresh customer@example.test' }] }), { status: 422 }))
+  const request = vi.fn(async (_input: string | URL | Request) => new Response(JSON.stringify({ slug: 'UNPROCESSABLE_ENTITY', details: [{ field: '_limit', slug: 'INVALID_PARAMETER_VALUE', message: 'private-refresh customer@example.test' }] }), { status: 422 }))
   const result = await diagnoseMagalu(db, request)
   expect(request).toHaveBeenCalledOnce()
+  const params = new URL(String(request.mock.calls[0][0])).searchParams
+  expect(Date.parse(params.get('purchased_at__lte')!) - Date.parse(params.get('purchased_at__gte')!)).toBeLessThanOrEqual(90 * 86400000)
   expect(request.mock.calls[0]).toEqual([expect.stringContaining('https://api.magalu.com/seller/v1/orders?'), expect.objectContaining({ redirect: 'error' })])
   expect(result).toMatchObject({ providerStatus: 422, detail: 'Campos rejeitados: _limit. Regras: INVALID_PARAMETER_VALUE, UNPROCESSABLE_ENTITY.' })
   expect(JSON.stringify(result)).not.toMatch(/private|customer|header\./)

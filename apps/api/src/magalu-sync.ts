@@ -56,29 +56,50 @@ const pageSchema = z.object({ results: z.array(z.unknown()), meta: z.object({
   page: z.object({ count: integer, offset: integer, limit: z.number().int().positive().max(100) }),
   links: z.object({ next: z.string().nullish() }),
 }) })
+export function magaluDateRanges(from: Date, to: Date) {
+  let start = from.getTime()
+  const end = to.getTime()
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) throw new SyncError(422, 'Período Magalu inválido.')
+  const ranges: { from: Date; to: Date }[] = []
+  // The provider permits at most 90 days. Leave one day for inclusive date boundaries.
+  for (;;) {
+    const limit = Math.min(start + 89 * 86400_000, end)
+    ranges.push({ from: new Date(start), to: new Date(limit) })
+    if (limit === end) return ranges
+    // Both filters are inclusive; reuse the boundary and deduplicate across ranges.
+    start = limit
+  }
+}
+
 export async function readMagaluOrders(get: (path: string) => Promise<unknown>, from: Date, to: Date, incremental: boolean, baseUrl = 'https://api.magalu.com') {
   if (!['https://api.magalu.com', 'https://api-sandbox.magalu.com'].includes(baseUrl)) throw new SyncError(500, 'Ambiente Magalu inválido.')
   const records = new Map<string, unknown>()
-  let offset = 0
-  for (let pageIndex = 0; pageIndex <= 200; pageIndex++) {
-    const field = incremental ? 'updated_at' : 'purchased_at'
-    const query = new URLSearchParams({ [`${field}__gte`]: from.toISOString(), [`${field}__lte`]: to.toISOString(), _limit: '50', _offset: String(offset), _sort: 'purchased_at:asc' })
-    const page = pageSchema.parse(await get(`/seller/v1/orders?${query}`))
-    if (page.meta.page.offset !== offset || page.meta.page.count !== page.results.length) throw new SyncError(502, 'O Magalu retornou uma página inconsistente. Os dados anteriores foram preservados.')
-    for (const raw of page.results) {
-      const order = remoteOrder.parse(raw)
-      if (records.has(order.code)) throw new SyncError(409, 'Os pedidos Magalu mudaram durante a consulta. A atualização será repetida automaticamente.')
-      records.set(order.code, raw)
-      if (records.size > 10000) throw new SyncError(422, 'O histórico Magalu excede o limite desta importação.')
+  let pages = 0
+  for (const range of magaluDateRanges(from, to)) {
+    let offset = 0
+    const seen = new Set<string>()
+    for (;;) {
+      if (++pages > 201) throw new SyncError(422, 'A paginação Magalu excedeu o limite desta importação.')
+      const field = incremental ? 'updated_at' : 'purchased_at'
+      const query = new URLSearchParams({ [`${field}__gte`]: range.from.toISOString(), [`${field}__lte`]: range.to.toISOString(), _limit: '50', _offset: String(offset), _sort: 'purchased_at:asc' })
+      const page = pageSchema.parse(await get(`/seller/v1/orders?${query}`))
+      if (page.meta.page.offset !== offset || page.meta.page.count !== page.results.length) throw new SyncError(502, 'O Magalu retornou uma página inconsistente. Os dados anteriores foram preservados.')
+      for (const raw of page.results) {
+        const order = remoteOrder.parse(raw)
+        if (seen.has(order.code)) throw new SyncError(409, 'Os pedidos Magalu mudaram durante a consulta. A atualização será repetida automaticamente.')
+        seen.add(order.code)
+        records.set(order.code, raw)
+        if (records.size > 10000) throw new SyncError(422, 'O histórico Magalu excede o limite desta importação.')
+      }
+      const next = page.meta.links.next
+      if (!next) break
+      const url = new URL(next, `${baseUrl}/seller/v1/orders`)
+      const nextOffset = Number(url.searchParams.get('_offset'))
+      if (!page.results.length || url.origin !== baseUrl || url.pathname !== '/seller/v1/orders' || !Number.isSafeInteger(nextOffset) || nextOffset !== offset + page.results.length) throw new SyncError(502, 'O Magalu retornou uma paginação inválida. Nenhum resultado parcial foi publicado.')
+      offset = nextOffset
     }
-    const next = page.meta.links.next
-    if (!next) return [...records.values()]
-    const url = new URL(next, `${baseUrl}/seller/v1/orders`)
-    const nextOffset = Number(url.searchParams.get('_offset'))
-    if (!page.results.length || url.origin !== baseUrl || url.pathname !== '/seller/v1/orders' || !Number.isSafeInteger(nextOffset) || nextOffset !== offset + page.results.length) throw new SyncError(502, 'O Magalu retornou uma paginação inválida. Nenhum resultado parcial foi publicado.')
-    offset = nextOffset
   }
-  throw new SyncError(422, 'A paginação Magalu excedeu o limite desta importação.')
+  return [...records.values()]
 }
 
 const tokenResponse = z.object({ access_token: z.string().min(1), refresh_token: z.string().min(1),

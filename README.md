@@ -111,6 +111,8 @@ Agendamentos e contadores de falhas ficam no PostgreSQL. Cada execução reserva
 
 Os conectores atuais importam inicialmente até 12 meses e depois consultam pedidos modificados com sobreposição de 15 minutos. Uma reconciliação completa diária também revisita mudanças de entrega/devolução que não atualizem o pedido. A normalização mantém a cobertura do histórico em importações incrementais.
 
+Na Magalu, o histórico é dividido em intervalos de até 89 dias, respeitando o limite de 90 dias por consulta informado pela API. Cada intervalo começa sua própria paginação; pedidos repetidos nas fronteiras inclusivas são consolidados pelo código do pedido. O limite de 10 mil pedidos e o limite global de páginas continuam valendo para a importação completa. Só são gravados pedidos e cobertura depois de todos os intervalos terminarem com sucesso. O diagnóstico de um GET usa o primeiro desses intervalos.
+
 ### Diagnóstico Magalu no stage
 
 As consultas de pedidos enviam `Authorization: Bearer ...` e `X-Tenant-Id: GENPUB.<uuid>`. Em produção, o UUID é o da organização autorizada. No sandbox, é o vendedor fictício retornado pelo onboarding; a identidade da autorização pessoal é armazenada e validada separadamente. Não há variável de ambiente adicional para esse cabeçalho.

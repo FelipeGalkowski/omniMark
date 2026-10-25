@@ -54,6 +54,24 @@ it('paginates with fixed host and date filters, using modification dates for inc
   expect(params.get('updated_at__gte')).toBe(from.toISOString()); expect(params.get('updated_at__lte')).toBe(to.toISOString())
   expect(params.get('_offset')).toBe('1'); expect(params.has('purchased_at__gte')).toBe(false)
 })
+it.each([false, true])('reads the complete year without exceeding the provider 90-day limit, incremental=%s', async incremental => {
+  const field = incremental ? 'updated_at' : 'purchased_at'
+  const ranges: [string, string][] = []
+  const from = new Date('2025-10-24T13:25:30.123Z'), to = new Date('2026-10-24T13:25:30.123Z')
+  const get = vi.fn(async (path: string) => {
+    const params = new URL(path, 'https://api.magalu.com').searchParams
+    const start = params.get(`${field}__gte`)!, end = params.get(`${field}__lte`)!
+    if (Date.parse(end) - Date.parse(start) > 90 * 86400000) throw new Error('Date range exceeded the limit of 90 days.')
+    expect(params.get('_offset')).toBe('0')
+    ranges.push([start, end])
+    return page()
+  })
+  expect(await readMagaluOrders(get, from, to, incremental)).toEqual([])
+  expect(ranges.length).toBeGreaterThan(1)
+  expect(ranges[0][0]).toBe(from.toISOString())
+  expect(ranges.at(-1)![1]).toBe(to.toISOString())
+  for (let index = 1; index < ranges.length; index++) expect(ranges[index][0]).toBe(ranges[index - 1][1])
+})
 it('refuses repeated pages, foreign pagination URLs and missing pages before publishing', async () => {
   for (const next of ['https://attacker.example/seller/v1/orders?_offset=1', '?_offset=0']) {
     const get = vi.fn(async () => page([order()], 0, next))
@@ -67,10 +85,31 @@ it('refuses repeated pages, foreign pagination URLs and missing pages before pub
   await expect(syncMagaluAccount(db, 'account', request, { lease: 'lease' })).rejects.toThrow()
   expect(db.$transaction).not.toHaveBeenCalled(); expect(db.order.upsert).not.toHaveBeenCalled()
 })
+it('restarts pagination for each range and deduplicates orders on inclusive boundaries', async () => {
+  const from = new Date('2026-01-01T00:00:00Z'), boundary = new Date(from.getTime() + 89 * 86400000), to = new Date(boundary.getTime() + 86400000)
+  const shared = { ...order('boundary'), purchased_at: boundary.toISOString() }
+  const get = vi.fn().mockResolvedValueOnce(page([order('first')], 0, '?_offset=1'))
+    .mockResolvedValueOnce(page([shared], 1)).mockResolvedValueOnce(page([shared, order('last')]))
+  expect(await readMagaluOrders(get, from, to, false)).toHaveLength(3)
+  const queries = get.mock.calls.map(([path]) => new URL(path, 'https://api.magalu.com').searchParams)
+  expect(queries.map(q => q.get('_offset'))).toEqual(['0', '1', '0'])
+  expect(queries[1].get('purchased_at__gte')).toBe(from.toISOString())
+  expect(queries[2].get('purchased_at__gte')).toBe(boundary.toISOString())
+  expect(queries[2].get('purchased_at__lte')).toBe(to.toISOString())
+})
+it('preserves the previous import when a later date range fails', async () => {
+  const { db } = database()
+  const request = vi.fn().mockResolvedValueOnce(response(page([order()])))
+    .mockResolvedValueOnce(response({ message: 'provider unavailable' }, 400))
+  await expect(syncMagaluAccount(db, 'account', request, { lease: 'lease' })).rejects.toThrow()
+  expect(request).toHaveBeenCalledTimes(2)
+  expect(db.$transaction).not.toHaveBeenCalled()
+  expect(db.order.upsert).not.toHaveBeenCalled()
+})
 it('refreshes and saves rotated credentials before the API call, imports atomically and marks financial gaps', async () => {
   const { db } = database(true)
   const request = vi.fn().mockResolvedValueOnce(response({ access_token: jwt(), refresh_token: 'rotated', token_type: 'Bearer', expires_in: 7200, scope: MAGALU_SCOPES.join(' ') }))
-    .mockResolvedValueOnce(response(page([order()])))
+    .mockImplementation(async () => response(page([order()])))
   expect(await syncMagaluAccount(db, 'account', request, { lease: 'lease' })).toEqual({ orders: 1, incomplete: 1 })
   expect(request.mock.calls[0][0]).toBe('https://id.magalu.com/oauth/token')
   expect(request.mock.calls[0][1].body.get('grant_type')).toBe('refresh_token')
@@ -152,7 +191,7 @@ it.each([false, true])('sends the authenticated tenant on every order page, incl
     return offset === '0' ? response(page([order('1')], 0, '?_offset=1&_limit=50')) : response(page([order('2')], 1))
   })
   expect(await syncMagaluAccount(db, 'account', request, { lease: 'lease' })).toEqual({ orders: 2, incomplete: 2 })
-  expect(request).toHaveBeenCalledTimes(2)
+  expect(request.mock.calls.length).toBeGreaterThanOrEqual(2)
   expect(db.order.upsert).toHaveBeenCalledTimes(2)
 })
 

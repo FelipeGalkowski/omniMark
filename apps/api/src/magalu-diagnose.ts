@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
 import { vault } from './mercadolivre.js'
 import { magaluTenant } from './magalu.js'
-import { magaluDiagnostic } from './magalu-sync.js'
+import { magaluDateRanges, magaluDiagnostic } from './magalu-sync.js'
 import { magaluDiagnosticMessage } from './magalu-diagnostic-message.js'
 import { magaluEnvironment, magaluAccountContext, magaluRequestHeaders } from './magalu-environment.js'
 
@@ -26,7 +26,8 @@ export async function diagnoseMagalu(db: PrismaClient, request: typeof fetch = f
   const fullSync = !account.lastFullSyncAt || !account.syncTo || to.getTime() - account.lastFullSyncAt.getTime() >= 86400_000
   const from = fullSync ? historyStart : new Date(Math.max(historyStart.getTime(), account.syncTo!.getTime() - 15 * 60_000))
   const field = fullSync ? 'purchased_at' : 'updated_at'
-  const query = new URLSearchParams({ [`${field}__gte`]: from.toISOString(), [`${field}__lte`]: to.toISOString(), _limit: '50', _offset: '0', _sort: 'purchased_at:asc' })
+  const [range] = magaluDateRanges(from, to)
+  const query = new URLSearchParams({ [`${field}__gte`]: range.from.toISOString(), [`${field}__lte`]: range.to.toISOString(), _limit: '50', _offset: '0', _sort: 'purchased_at:asc' })
   const response = await request(`${context.baseUrl}/seller/v1/orders?${query}`, { redirect: 'error', headers: magaluRequestHeaders(tokens.accessToken, context), signal: AbortSignal.timeout(20000) })
   if (response.ok) {
     await response.body?.cancel()
