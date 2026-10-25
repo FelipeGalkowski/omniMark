@@ -13,7 +13,7 @@ class SeedError extends Error {
   constructor(message: string, public diagnostic?: object) { super(message) }
 }
 
-export async function seedMagaluSandbox(db: PrismaClient, action: 'catalog' | 'order' | 'approve', request: typeof fetch = fetch, approvalTarget?: { id: string; deliveryIds: string[] }) {
+export async function seedMagaluSandbox(db: PrismaClient, action: 'catalog' | 'order' | 'approve', request: typeof fetch = fetch, approvalTarget?: { code: string; deliveryIds: string[] }) {
   if (process.env.WEB_ORIGIN !== 'https://teste.omnimark.tech' || magaluEnvironment().environment !== 'SANDBOX') throw new SeedError('A geração de dados fictícios exige o stage e MAGALU_ENVIRONMENT=sandbox.')
   const accounts = await db.marketplaceAccount.findMany({ where: { marketplace: 'MAGALU', environment: 'SANDBOX', status: 'CONNECTED' }, include: { credentials: true }, take: 2 })
   if (accounts.length !== 1) throw new SeedError('Conecte exatamente uma conta Magalu de sandbox antes de gerar os dados de teste.')
@@ -38,10 +38,10 @@ export async function seedMagaluSandbox(db: PrismaClient, action: 'catalog' | 'o
   }
 
   if (action === 'approve') {
-    const id = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/).parse(approvalTarget?.id)
+    const code = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/).parse(approvalTarget?.code)
     const deliveryIds = z.array(z.string().regex(/^[A-Za-z0-9_-]{1,128}$/)).min(1).max(10).parse(approvalTarget?.deliveryIds)
-    await call('PUT', `/v1/samples/orders/${encodeURIComponent(id)}`, { channel, deliveries: deliveryIds.map(deliveryId => ({ id: deliveryId })), status: 'approved' })
-    return { state: 'approval_requested', id, message: 'Solicitação de aprovação do pedido fictício enviada. A rotina automática consultará o resultado.' }
+    await call('PUT', `/v1/samples/orders/${encodeURIComponent(code)}`, { channel, deliveries: deliveryIds.map(deliveryId => ({ id: deliveryId })), status: 'approved' })
+    return { state: 'approval_requested', code, message: 'Solicitação de aprovação do pedido fictício enviada. A rotina automática consultará o resultado.' }
   }
 
   if (action === 'catalog') {
@@ -66,22 +66,23 @@ export async function seedMagaluSandbox(db: PrismaClient, action: 'catalog' | 'o
   const result = z.object({ id: z.string().min(1).max(128).optional(), code: z.string().min(1).max(128).optional(), deliveries: z.array(z.object({ id: z.string().min(1).max(128) })).optional() }).safeParse(payload)
   let approval: 'requested' | 'pending' = 'pending'
   let approvalDiagnostic: object | undefined
-  if (result.success && result.data.id && result.data.deliveries?.length) {
+  if (result.success && result.data.code && result.data.deliveries?.length) {
     try {
-      await call('PUT', `/v1/samples/orders/${encodeURIComponent(result.data.id)}`, { channel, deliveries: result.data.deliveries.map(delivery => ({ id: delivery.id })), status: 'approved' })
+      // The samples route names its path parameter "id", but resolves the commercial code.
+      await call('PUT', `/v1/samples/orders/${encodeURIComponent(result.data.code)}`, { channel, deliveries: result.data.deliveries.map(delivery => ({ id: delivery.id })), status: 'approved' })
       approval = 'requested'
     } catch (error) { if (error instanceof SeedError) approvalDiagnostic = error.diagnostic }
   }
   return { state: 'order_created', sku: SKU, ...(result.success ? { id: result.data.id, code: result.data.code, deliveryIds: result.data.deliveries?.map(delivery => delivery.id) } : {}), approval, approvalDiagnostic,
-    message: approval === 'requested' ? 'Pedido fictício criado e aprovação solicitada. A rotina automática importará os dados.' : 'Pedido fictício criado. A aprovação ainda precisa ser confirmada; use --approve com o ID do pedido e os IDs das entregas, sem repetir --order.' }
+    message: approval === 'requested' ? 'Pedido fictício criado e aprovação solicitada. A rotina automática importará os dados.' : 'Pedido fictício criado. A aprovação ainda precisa ser confirmada; use --approve com o código do pedido (campo code) e os IDs das entregas, sem repetir --order.' }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const action = process.argv[2]
-  if (action !== '--catalog' && action !== '--order' && action !== '--approve') { console.error('Use --catalog, --order ou --approve ID_DO_PEDIDO ID_DA_ENTREGA [...].'); process.exitCode = 1 }
+  if (action !== '--catalog' && action !== '--order' && action !== '--approve') { console.error('Use --catalog, --order ou --approve CODIGO_DO_PEDIDO ID_DA_ENTREGA [...].'); process.exitCode = 1 }
   else {
     const db = new PrismaClient()
-    try { console.log(JSON.stringify(await seedMagaluSandbox(db, action === '--catalog' ? 'catalog' : action === '--order' ? 'order' : 'approve', fetch, action === '--approve' ? { id: process.argv[3], deliveryIds: process.argv.slice(4) } : undefined), null, 2)) }
+    try { console.log(JSON.stringify(await seedMagaluSandbox(db, action === '--catalog' ? 'catalog' : action === '--order' ? 'order' : 'approve', fetch, action === '--approve' ? { code: process.argv[3], deliveryIds: process.argv.slice(4) } : undefined), null, 2)) }
     catch (error) { console.error(JSON.stringify(error instanceof SeedError ? { error: error.message, diagnostic: error.diagnostic } : { error: 'Não foi possível concluir a operação de sandbox. Nenhuma credencial foi exibida.' }, null, 2)); process.exitCode = 1 }
     finally { await db.$disconnect() }
   }

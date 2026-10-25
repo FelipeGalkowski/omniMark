@@ -185,10 +185,10 @@ Se a resposta for `product_submitted`, aguarde o processamento da Magalu e repit
 node /app/apps/api/dist/magalu-sandbox-seed.js --order
 ```
 
-Cada execução de `--order` cria um novo pedido fictício. O comando solicita sua aprovação quando a resposta contém os IDs necessários e não repete automaticamente gravações. Se a aprovação ficar pendente, use os IDs retornados para solicitar a aprovação do mesmo pedido:
+Cada execução de `--order` cria um novo pedido fictício. O comando solicita sua aprovação quando a resposta contém o código do pedido e os IDs das entregas e não repete automaticamente gravações. A rota de aprovação do sandbox resolve o campo `code` do pedido, embora a documentação chame o parâmetro da URL de `id`; usar o UUID retornado em `id` produz `ORDER_NOT_FOUND`. Se a aprovação ficar pendente, use o código e os IDs das entregas retornados para solicitar a aprovação do mesmo pedido:
 
 ```sh
-node /app/apps/api/dist/magalu-sandbox-seed.js --approve ID_DO_PEDIDO ID_DA_ENTREGA
+node /app/apps/api/dist/magalu-sandbox-seed.js --approve CODIGO_DO_PEDIDO ID_DA_ENTREGA
 ```
 
 Os comandos exigem o domínio de stage, modo sandbox e exatamente uma conta Magalu de sandbox conectada. Nunca gravam na API de produção. Usam o SKU estável `OMNIMARK-SANDBOX-001` e a imagem pública `/sandbox-product.jpg`; não importam pedidos diretamente no banco nem exibem dados de compradores ou credenciais. A importação usa a rotina automática existente. Os retornos de criação/aprovação indicam aceitação da operação, e a confirmação dos dados depende das consultas posteriores à Magalu.
