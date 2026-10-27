@@ -17,6 +17,53 @@ function mockFetch(handler: (path: string, init?: RequestInit) => { status?: num
 }
 
 describe('Frontend integrado', () => {
+  it('conclui o retorno Shopee e identifica o sandbox sem chamar outros provedores', async () => {
+    window.history.replaceState(null, '', '/#shopee_state=shopee-test')
+    const fetch = mockFetch(path => {
+      if (path === '/api/auth/me') return { body: { user } }
+      if (path === '/api/companies') return { body: [{ id: 'company-real', name: 'Empresa real', role: 'OWNER' }] }
+      if (path === '/api/integrations/shopee/complete') return { body: { connected: true, companyId: 'company-real', environment: 'SANDBOX' } }
+      return { body: [] }
+    })
+    render(<Application />)
+    await screen.findByText('Conta conectada ao sandbox Shopee. Os pedidos fictícios serão importados automaticamente.')
+    expect(window.location.hash).toBe('')
+    expect(fetch.mock.calls.filter(([path]) => path.endsWith('/complete'))).toEqual([
+      ['/api/integrations/shopee/complete', expect.objectContaining({ method: 'POST', body: JSON.stringify({ state: 'shopee-test' }) })],
+    ])
+  })
+  it('não conclui retorno com estados Shopee e Magalu juntos', async () => {
+    window.history.replaceState(null, '', '/#shopee_state=a&magalu_state=b')
+    const fetch = mockFetch(path => {
+      if (path === '/api/auth/me') return { body: { user } }
+      if (path === '/api/companies') return { body: [{ id: 'company-real', name: 'Empresa real', role: 'OWNER' }] }
+      return { body: [] }
+    })
+    render(<Application />)
+    await screen.findByText('Sua visão geral começa aqui')
+    expect(fetch.mock.calls.some(([path]) => path.endsWith('/complete'))).toBe(false)
+    window.history.replaceState(null, '', '/')
+  })
+  it('inicia a conexão Shopee com aviso de sandbox e mostra configuração pendente sem simular sucesso', async () => {
+    const fetch = mockFetch(path => {
+      if (path === '/api/auth/me') return { body: { user } }
+      if (path === '/api/companies') return { body: [{ id: 'company-real', name: 'Empresa real', role: 'OWNER' }] }
+      if (path === '/api/integrations/shopee/environment') return { body: { environment: 'SANDBOX' } }
+      if (path.endsWith('/shopee/authorize')) return { status: 503, body: { error: 'Configure as credenciais Shopee.' } }
+      return { body: [] }
+    })
+    render(<Application />)
+    const action = userEvent.setup()
+    await screen.findByText('Sua visão geral começa aqui')
+    await action.click(screen.getByRole('button', { name: 'Contas' }))
+    await action.click(screen.getByRole('button', { name: 'Conectar nova conta' }))
+    await action.click(screen.getByRole('button', { name: 'Shopee' }))
+    expect(await screen.findByText(/Sandbox Shopee · dados fictícios/)).toBeTruthy()
+    await action.click(screen.getByRole('button', { name: 'Autorizar na Shopee' }))
+    expect((await screen.findByRole('alert')).textContent).toBe('Configure as credenciais Shopee.')
+    expect(fetch.mock.calls.some(([path, init]) => path.endsWith('/shopee/authorize') && init?.method === 'POST')).toBe(true)
+    expect(screen.queryByText('Conta conectada!')).toBeNull()
+  })
   it('completa o retorno do Magalu sem chamar a integração do Mercado Livre', async () => {
     window.history.replaceState(null, '', '/#magalu_state=magalu-test')
     const fetch = mockFetch(path => {

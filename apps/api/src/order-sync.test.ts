@@ -198,7 +198,7 @@ describe('Importação de pedidos', () => {
     registerOrderSync(app, db, async (req: any) => { req.currentUser = { id: 'user' } }, 'https://example.test')
     try {
       expect((await app.inject(`/companies/${companyId}/orders`)).statusCode).toBe(200)
-      const scope = { companyId, OR: [{ marketplace: { not: 'MAGALU' } }, { marketplace: 'MAGALU', environment: 'SANDBOX' }] }
+      const scope = { companyId, OR: [{ marketplace: { notIn: ['MAGALU', 'SHOPEE'] } }, { marketplace: 'MAGALU', environment: 'SANDBOX' }, { marketplace: 'SHOPEE', environment: 'SANDBOX' }] }
       expect(db.marketplaceAccount.findMany.mock.calls[0][0].where).toEqual(scope)
       expect(db.order.findMany.mock.calls[0][0].where).toEqual({ account: scope })
     } finally { await app.close() }

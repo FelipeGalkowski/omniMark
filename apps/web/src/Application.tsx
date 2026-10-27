@@ -43,11 +43,13 @@ export default function App() {
   const requestVersion = useRef(0)
   const [oauthReturn] = useState(() => {
     const params = new URLSearchParams(window.location.hash.slice(1))
-    const magalu = params.get('magalu_state')
-    const mercadoLivre = params.get('ml_state')
-    // An ambiguous return is never sent to either provider.
-    if (magalu && mercadoLivre) return null
-    return magalu ? { provider: 'magalu', state: magalu, label: 'Magalu' } : mercadoLivre ? { provider: 'mercadolivre', state: mercadoLivre, label: 'Mercado Livre' } : null
+    const candidates = [
+      { provider: 'magalu', state: params.get('magalu_state'), label: 'Magalu' },
+      { provider: 'mercadolivre', state: params.get('ml_state'), label: 'Mercado Livre' },
+      { provider: 'shopee', state: params.get('shopee_state'), label: 'Shopee' },
+    ].filter(item => item.state)
+    // Never send an ambiguous callback to any provider.
+    return candidates.length === 1 ? { ...candidates[0], state: candidates[0].state! } : null
   })
   const oauthState = oauthReturn?.state
   const oauthStarted = useRef(false)
@@ -61,7 +63,7 @@ export default function App() {
     setConnectionStatus('info')
     setConnectionMessage(`Concluindo conexão com o ${oauthReturn!.label}…`)
     api<{ companyId: string; environment?: 'PRODUCTION' | 'SANDBOX' }>(`/integrations/${oauthReturn!.provider}/complete`, { method: 'POST', body: JSON.stringify({ state: oauthState }) })
-      .then(result => { setCompanyId(result.companyId); setPage('accounts'); setReloadKey(key => key + 1); setConnectionStatus('success'); setConnectionMessage(result.environment === 'SANDBOX' ? 'Conta conectada ao sandbox Magalu. Os pedidos fictícios serão importados automaticamente.' : `Conta conectada ao ${oauthReturn!.label}. A importação será iniciada automaticamente.`) })
+      .then(result => { setCompanyId(result.companyId); setPage('accounts'); setReloadKey(key => key + 1); setConnectionStatus('success'); setConnectionMessage(result.environment === 'SANDBOX' ? `Conta conectada ao sandbox ${oauthReturn!.label}. Os pedidos fictícios serão importados automaticamente.` : `Conta conectada ao ${oauthReturn!.label}. A importação será iniciada automaticamente.`) })
       .catch((failure: Error) => { setConnectionStatus('error'); setConnectionMessage(failure.message) })
   }, [oauthState, user, loading, companies])
   const isDark = themeMode === 'dark' || (themeMode === 'system' && sysDark)

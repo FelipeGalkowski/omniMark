@@ -128,7 +128,7 @@ export default function OrdersPage({ companyId, accounts, orders }: OrdersPagePr
                     <td style={{ padding:"12px 14px", color:"var(--t2)", whiteSpace:"nowrap" }}>{acct?.name ?? "—"}</td>
                     <td style={{ padding:"12px 14px" }}><StatusBadge status={o.status} /></td>
                     <td style={{ padding:"12px 14px", fontFamily:"'JetBrains Mono',monospace", fontSize:12, color:"var(--t1)", textAlign:"right", whiteSpace:"nowrap" }}>
-                      {formatBRLFull(orderItemsTotal(o))}
+                      {orderItemsTotal(o) === null ? '—' : formatBRLFull(orderItemsTotal(o)!)}
                     </td>
                   </tr>
                 )
@@ -205,8 +205,8 @@ function OrderPanel({ order, accounts, onClose }: { order: Order; accounts: Acco
                   <dl style={{ display:"flex", flexWrap:"wrap", gap:"12px 20px", margin:"14px 0 0" }}>
                     {[
                       ['Quantidade', item.qty.toLocaleString('pt-BR')],
-                      ['Valor unitário', formatBRLFull(item.unitPrice)],
-                      ['Total do item', formatBRLFull(item.qty * item.unitPrice)],
+                      ['Valor unitário', item.unitPrice === null ? '—' : formatBRLFull(item.unitPrice)],
+                      ['Total do item', item.unitPrice === null ? '—' : formatBRLFull(item.qty * item.unitPrice)],
                     ].map(([label, value]) => (
                       <div key={label} style={{ flex:"1 0 auto", maxWidth:"100%" }}>
                         <dt style={{ fontSize:11, color:"var(--t3)", marginBottom:5 }}>{label}</dt>
@@ -220,8 +220,8 @@ function OrderPanel({ order, accounts, onClose }: { order: Order; accounts: Acco
           </div>
 
           <div style={{ borderTop:"1px solid var(--bd)", paddingTop:12, display:"flex", flexDirection:"column", gap:6 }}>
-            <Row label={order.financials?.productsTotal !== undefined ? 'Produtos após descontos' : 'Subtotal (produtos)'} mono>{formatBRLFull(order.financials?.productsTotal ?? itemsTotal)}</Row>
-            {order.financials?.productsTotal === undefined && <Row label="Descontos" mono>{order.financials ? formatBRLFull(order.financials.discount) : '—'}</Row>}
+            <Row label={order.financials?.productsTotal !== undefined ? 'Produtos após descontos' : 'Subtotal (produtos)'} mono>{(order.financials?.productsTotal ?? itemsTotal) === null ? '—' : formatBRLFull((order.financials?.productsTotal ?? itemsTotal)!)}</Row>
+            {order.financials?.productsTotal === undefined && <Row label="Descontos" mono>{order.financials && order.financials.discountKnown !== false ? formatBRLFull(order.financials.discount) : '—'}</Row>}
             <Row label="Frete do comprador" mono>{order.shippingKnown === false ? '—' : formatBRLFull(order.shipping)}</Row>
             <div style={{ borderTop:"1px solid var(--bd)", paddingTop:8, marginTop:2, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <span style={{ fontSize:13, fontWeight:700, color:"var(--t1)" }}>Total do pedido</span>

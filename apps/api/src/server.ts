@@ -10,6 +10,7 @@ import { registerEmailWorker } from './account-email.js'
 import { z } from 'zod'
 import { registerMercadoLivre } from './mercadolivre.js'
 import { registerMagalu } from './magalu.js'
+import { registerShopee } from './shopee.js'
 import { registerLegalPages } from './legal.js'
 import { registerOrderSync } from './order-sync.js'
 import { orderSyncAdapters } from './sync-adapters.js'
@@ -80,6 +81,7 @@ app.get('/companies/:id/dashboard', { preHandler: authenticated }, async (req: a
 })
 registerMercadoLivre(app, db, authenticated, cookieName, origin)
 registerMagalu(app, db, authenticated, cookieName, origin)
+registerShopee(app, db, authenticated, cookieName, origin)
 registerLegalPages(app)
 registerOrderSync(app, db, authenticated, origin, syncService)
 registerAccounts(app, db, authenticated, origin)

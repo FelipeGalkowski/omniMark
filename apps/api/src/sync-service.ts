@@ -81,7 +81,7 @@ export function createSyncService(db: PrismaClient, adapters: SyncAdapter[], con
     const account = await db.marketplaceAccount.findUnique({ where: { id: accountId } })
     if (!account) throw new SyncError(404, 'Conta não encontrada.')
     if (!registry.has(account.marketplace)) throw new SyncError(501, 'A sincronização deste marketplace ainda não está disponível.')
-    if (describe(account).state === 'environment_mismatch') throw new SyncError(409, 'Esta conta pertence a outro ambiente Magalu. Conecte a conta no ambiente atual.')
+    if (describe(account).state === 'environment_mismatch') throw new SyncError(409, 'Esta conta pertence a outro ambiente do marketplace. Conecte a conta no ambiente atual.')
     if (!config.enabled) throw new SyncError(503, 'A atualização automática está pausada no servidor.')
     if (account.status !== 'CONNECTED') throw new SyncError(409, 'Reconecte a conta para atualizar os dados.', true)
     const now = new Date()

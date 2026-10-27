@@ -160,6 +160,18 @@ model MagaluOAuthAttempt {
   expiresAt DateTime
   @@index([expiresAt])
 }
+model ShopeeOAuthAttempt {
+  stateHash String @id
+  sessionHash String
+  userId String
+  companyId String
+  partnerId String
+  environment MarketplaceEnvironment
+  codeCipher String?
+  denied Boolean @default(false)
+  expiresAt DateTime
+  @@index([expiresAt])
+}
 model Order {
   id String @id @default(uuid())
   accountId String
@@ -167,7 +179,7 @@ model Order {
   externalId String
   status String
   currency String @default("BRL")
-  grossAmount Decimal @db.Decimal(18,2)
+  grossAmount Decimal? @db.Decimal(18,2)
   orderedAt DateTime
   updatedAt DateTime @updatedAt
   items OrderItem[]
@@ -182,5 +194,5 @@ model OrderItem {
   externalSku String?
   title String
   quantity Int
-  unitPrice Decimal @db.Decimal(18,2)
+  unitPrice Decimal? @db.Decimal(18,2)
 }

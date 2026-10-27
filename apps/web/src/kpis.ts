@@ -4,8 +4,10 @@ const cents = (amount: number) => Math.round((amount + Number.EPSILON) * 100)
 const uniqueOrders = (orders: Order[]) => [...new Map(orders.map(order => [JSON.stringify([order.companyId, order.accountId, order.id]), order])).values()]
 
 export function orderSale(order: Order): number | null {
+  if (order.financials?.orderTotal !== undefined) return order.financials.orderTotal === null ? null : cents(order.financials.orderTotal) / 100
   if (!order.financials || order.shippingKnown === false) return null
-  const products = order.financials.productsTotal !== undefined ? cents(order.financials.productsTotal) : order.items.reduce((total, item) => total + cents(item.unitPrice) * item.qty, 0) - cents(order.financials.discount)
+  if (order.financials.productsTotal === undefined && order.items.some(item => item.unitPrice === null)) return null
+  const products = order.financials.productsTotal !== undefined ? cents(order.financials.productsTotal) : order.items.reduce((total, item) => total + cents(item.unitPrice!) * item.qty, 0) - cents(order.financials.discount)
   return (products + cents(order.shipping)) / 100
 }
 

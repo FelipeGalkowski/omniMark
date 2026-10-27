@@ -50,7 +50,7 @@ A lixeira em Contas permite que proprietários e administradores desconectem uma
 - Sessões por cookie HttpOnly e senhas protegidas com Argon2.
 - Empresas com acesso por vínculo e papel.
 - OAuth do Mercado Livre com PKCE e tokens criptografados no servidor.
-- Importação automática de pedidos Mercado Livre e Magalu, com renovação de tokens, paginação e tentativas após falhas. No Mercado Livre, consulta também envios, reembolsos e devoluções.
+- Importação automática de pedidos Mercado Livre, Magalu e Shopee, com renovação de tokens, paginação e tentativas após falhas. No Mercado Livre, consulta também envios, reembolsos e devoluções.
 - Pedidos e indicadores alimentados pelos registros importados, com identificação de dados indisponíveis e cobertura do período.
 - Demonstração isolada com dados fictícios.
 
@@ -127,7 +127,21 @@ node /app/apps/api/dist/magalu-diagnose.js
 
 O comando exige `WEB_ORIGIN=https://teste.omnimark.tech` e exatamente uma conta Magalu conectada no ambiente Magalu ativo. Faz no máximo um GET, descarta pedidos retornados e exibe somente o diagnóstico seguro. Em respostas de erro, inclui `providerMessage` com as mensagens de validação após remover credenciais conhecidas, tokens, links, e-mails e identificadores; campos `input` e objetos de compradores não são copiados. Essas mensagens livres não são adicionadas aos logs automáticos. Não importa pedidos, não altera registros ou agendamentos e não renova tokens. Se a autorização estiver vencida, aguarde a renovação pela rotina automática. Uma resposta 200 confirma apenas que a primeira consulta foi aceita, sem validar a importação completa.
 
-`apps/api/src/sync-contract.ts` define o contrato dos conectores. Para Shopee, Amazon ou outro canal, implemente a leitura, normalização, renovação e persistência e registre o adaptador em `sync-adapters.ts`. Ele passa a usar o mesmo agendador, reservas e tentativas automaticamente. Shopee e Amazon continuam sem conector real; não são anunciados como sincronizados nem consultados por um adaptador fictício. Cada conector deve salvar somente após ler todas as páginas e validar a identidade da loja.
+`apps/api/src/sync-contract.ts` define o contrato dos conectores. Mercado Livre, Magalu e Shopee usam o mesmo agendador, reservas e tentativas. Para Amazon ou outro canal, implemente a leitura, normalização, renovação e persistência e registre o adaptador em `sync-adapters.ts`. Amazon continua sem conector real. Cada conector só publica os pedidos após concluir e validar toda a consulta.
+
+### Conexão Shopee
+
+Em Contas → Conectar conta → Shopee, autorize diretamente uma loja brasileira por vez. O retorno de uma conta principal com várias lojas ainda não é aceito. A conexão vincula o consentimento à sessão e à empresa, verifica a identidade da loja/aplicativo pela resposta de renovação e criptografa os tokens. Reconectar preserva o nome e o histórico. A integração começa pelo sandbox; a validação externa e os dados reais ainda precisam ser comprovados.
+
+Configure no Coolify somente em runtime:
+
+- `SHOPEE_PARTNER_ID` e `SHOPEE_PARTNER_KEY`: credenciais de teste do aplicativo, sem expor a chave no frontend, Git ou logs.
+- `SHOPEE_ENVIRONMENT=sandbox` para loja de teste; `production` somente com credenciais e autorização reais.
+- `SHOPEE_REDIRECT_URI=https://teste.omnimark.tech/integrations/shopee/callback`. O domínio de retorno de teste cadastrado na Shopee deve ser `https://teste.omnimark.tech`. Preserve a `TOKEN_ENCRYPTION_KEY` e a `WEB_ORIGIN` do stage.
+
+A migração `20261026000100_shopee_oauth` cria as tentativas de autorização e permite valores monetários ausentes no banco, sem modificar valores existentes. A primeira importação e a reconciliação diária consultam doze meses em janelas de 14 dias (limite do fornecedor: 15). As incrementais usam `update_time` com sobreposição de 15 minutos. A listagem percorre cursores e os detalhes são buscados em lotes de até 50 pedidos. Há limite global de 10 mil pedidos e nenhuma publicação parcial. Tokens rotacionados são gravados imediatamente sob a reserva, mesmo se a importação de pedidos falhar depois.
+
+O total Shopee exibido é `total_amount`, pago pelo comprador, já incluindo frete e promoções segundo a API. `actual_shipping_fee` é custo logístico e não é somado como frete do comprador. A divisão do frete, descontos de pedido, preços individuais de combos, reembolsos, devoluções, taxas e repasses ficam indisponíveis quando não comprovados pelos recursos consultados. Totais ausentes ficam nulos, inclusive em pedidos ainda não pagos; não são estimados a partir dos itens. Dados de compradores não são solicitados nos campos opcionais nem persistidos. Lojas de ambientes inativos são excluídas dos pedidos e indicadores.
 
 As fontes usadas para os filtros e formatos estão na [busca de pedidos Mercado Livre](https://developers.mercadolivre.com.br/pt_br/gerenciamento-de-vendas), [pedidos Magalu](https://developers.magalu.com/docs/apis/orders/ref/seller-v-1-get-order-list) e [renovação Magalu](https://developers.magalu.com/docs/first-steps/create-an-application/authentication-authorization/index.html).
 

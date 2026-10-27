@@ -46,7 +46,7 @@ export interface Account {
 export interface OrderItem {
   name: string
   qty: number
-  unitPrice: number
+  unitPrice: number | null
 }
 
 export interface Order {
@@ -60,6 +60,8 @@ export interface Order {
   shipping: number
   shippingKnown?: boolean
   financials?: {
+    orderTotal?: number | null
+    discountKnown?: boolean
     productsTotal?: number
     refundsKnown?: boolean
     returnsKnown?: boolean
@@ -324,7 +326,7 @@ function generateOrders(): Order[] {
 export const ALL_ORDERS: Order[] = generateOrders().map((order, index) => {
   const paymentConfirmed = order.status !== 'pending' && (order.status !== 'cancelled' || index % 2 === 0)
   const discount = paymentConfirmed && index % 7 === 0 ? 10 : 0
-  const total = Math.round((orderItemsTotal(order) - discount + order.shipping) * 100) / 100
+  const total = Math.round((orderItemsTotal(order)! - discount + order.shipping) * 100) / 100
   const refunded = paymentConfirmed && (order.status === 'returned' || order.status === 'cancelled')
   const partial = order.status === 'delivered' && index % 13 === 0
   const requested = order.status === 'delivered' && !partial && index % 17 === 0
@@ -336,8 +338,9 @@ export const ALL_ORDERS: Order[] = generateOrders().map((order, index) => {
 })
 
 
-export function orderItemsTotal(o: Order): number {
-  return o.items.reduce((s, i) => s + i.qty * i.unitPrice, 0)
+export function orderItemsTotal(o: Order): number | null {
+  if (o.items.some(item => item.unitPrice === null)) return null
+  return o.items.reduce((s, i) => s + i.qty * i.unitPrice!, 0)
 }
 
 export function countedInRevenue(o: Order): boolean {

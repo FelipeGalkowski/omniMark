@@ -26,5 +26,5 @@ it('requires the sandbox onboarding seller/channel and binds request headers to 
   const context = magaluAccountContext({ environment: 'SANDBOX', externalId: tenant, magaluSellerId: seller, magaluChannelId: MAGALU_SANDBOX_CHANNEL })
   expect(context.baseUrl).toBe('https://api-sandbox.magalu.com')
   expect(magaluRequestHeaders('fixture-token', context)).toMatchObject({ 'X-Tenant-Id': `GENPUB.${seller}`, 'X-Channel-Id': MAGALU_SANDBOX_CHANNEL })
-  expect(activeMarketplaceAccounts()).toEqual({ OR: [{ marketplace: { not: 'MAGALU' } }, { marketplace: 'MAGALU', environment: 'SANDBOX' }] })
+  expect(activeMarketplaceAccounts()).toEqual({ OR: [{ marketplace: { notIn: ['MAGALU', 'SHOPEE'] } }, { marketplace: 'MAGALU', environment: 'SANDBOX' }, { marketplace: 'SHOPEE', environment: 'SANDBOX' }] })
 })

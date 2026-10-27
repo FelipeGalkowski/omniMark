@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
+import { shopeeEnvironment } from './shopee-environment.js'
 
 export const MAGALU_READ_SCOPES = ['open:order-order-seller:read', 'open:order-delivery-seller:read']
 export const MAGALU_SANDBOX_SCOPES = [...MAGALU_READ_SCOPES, 'open:order-logistics-seller:read',
@@ -40,5 +41,7 @@ export function magaluRequestHeaders(accessToken: string, context: ReturnType<ty
 }
 
 export function activeMarketplaceAccounts(): Prisma.MarketplaceAccountWhereInput {
-  return { OR: [{ marketplace: { not: 'MAGALU' } }, { marketplace: 'MAGALU', environment: magaluEnvironment().environment }] }
+  return { OR: [{ marketplace: { notIn: ['MAGALU', 'SHOPEE'] } },
+    { marketplace: 'MAGALU', environment: magaluEnvironment().environment },
+    { marketplace: 'SHOPEE', environment: shopeeEnvironment().environment }] }
 }

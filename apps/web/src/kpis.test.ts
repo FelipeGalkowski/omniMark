@@ -8,6 +8,14 @@ function order(changes: Partial<Order> = {}): Order {
 const refund = (id: string, amount: number) => ({ id, amount, status: 'confirmed' as const, date: new Date(2025, 1, 10) })
 
 describe('Indicadores de vendas', () => {
+  it('usa o total pago Shopee sem somar frete logístico, estimar preços de combos ou zerar reembolsos', () => {
+    const imported = order({ marketplace: 'shopee', items: [{ name: 'Combo', qty: 2, unitPrice: null }], shipping: 0, shippingKnown: false,
+      financials: { orderTotal: 99.9, paymentConfirmed: true, discount: 0, discountKnown: false, refundsKnown: false, returnsKnown: false, refunds: [], returns: [] } })
+    expect(orderSale(imported)).toBe(99.9)
+    expect(summarizeOrders([imported])).toMatchObject({ complete: true, gross: 99.9, count: 1, refunds: null, adjusted: null, returns: null })
+    expect(summarizeOrders([{ ...imported, financials: { ...imported.financials!, orderTotal: null } }])).toMatchObject({ complete: false, gross: null })
+    expect(summarizeOrders([{ ...imported, financials: { ...imported.financials!, orderTotal: null, paymentConfirmed: false } }])).toMatchObject({ complete: true, gross: 0, count: 0 })
+  })
   it('usa total importado e distingue frete, reembolsos e devoluções desconhecidos', () => {
     const imported = order({ financials: { paymentConfirmed: true, discount: 0, productsTotal: 180, refundsKnown: false, returnsKnown: false, refunds: [], returns: [] } })
     expect(summarizeOrders([imported])).toMatchObject({ gross: 210, refunds: null, adjusted: null, returns: null })
