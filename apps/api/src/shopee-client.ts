@@ -8,7 +8,7 @@ import { shopeeEnvironment } from './shopee-environment.js'
 export { shopeeEnvironment } from './shopee-environment.js'
 
 // Shopee Authorization and Authentication, updated 2026-07-23.
-// Fixed BR authorization hosts and API hosts; credentials never select a host.
+// Fixed provider authorization/API hosts; credentials never select a host.
 // JSON request bodies require numeric IDs. Reject precision loss and aliases.
 const numericId = z.number().int().positive().safe()
 const idString = z.string().regex(/^[1-9]\d*$/).refine(value => Number.isSafeInteger(Number(value)))

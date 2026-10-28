@@ -133,6 +133,8 @@ O comando exige `WEB_ORIGIN=https://teste.omnimark.tech` e exatamente uma conta 
 
 Em Contas → Conectar conta → Shopee, autorize diretamente uma loja brasileira por vez. O retorno de uma conta principal com várias lojas ainda não é aceito. A conexão vincula o consentimento à sessão e à empresa, verifica a identidade da loja/aplicativo pela resposta de renovação e criptografa os tokens. Reconectar preserva o nome e o histórico. A integração começa pelo sandbox; a validação externa e os dados reais ainda precisam ser comprovados.
 
+O link de autorização do sandbox usa `https://open.sandbox.test-stable.shopee.com/auth`. A variante com `.com.br` indicada na tabela do guia não resolvia em DNS na verificação de 27/10/2026; o endereço global respondeu HTTP 200. Essa verificação confirma a disponibilidade do endereço, não a autorização ou importação da loja. Após um deploy que altere o link, inicie novamente a conexão pelo OmniMark para gerar um novo `state`.
+
 Configure no Coolify somente em runtime:
 
 - `SHOPEE_PARTNER_ID` e `SHOPEE_PARTNER_KEY`: credenciais de teste do aplicativo, sem expor a chave no frontend, Git ou logs.

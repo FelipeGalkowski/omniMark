@@ -12,8 +12,8 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllEnvs())
 
-it('uses the documented BR authorization hosts and isolated API environments', () => {
-  expect(shopeeEnvironment()).toEqual({ environment: 'SANDBOX', authorizationUrl: 'https://open.sandbox.test-stable.shopee.com.br/auth',
+it('uses the reachable global sandbox entry point, BR production and isolated API environments', () => {
+  expect(shopeeEnvironment()).toEqual({ environment: 'SANDBOX', authorizationUrl: 'https://open.sandbox.test-stable.shopee.com/auth',
     baseUrl: 'https://openplatform.sandbox.test-stable.shopee.sg' })
   vi.stubEnv('SHOPEE_ENVIRONMENT', 'production')
   expect(shopeeEnvironment()).toEqual({ environment: 'PRODUCTION', authorizationUrl: 'https://open.shopee.com.br/auth',
@@ -40,7 +40,7 @@ it('requires an exact HTTPS callback, safe numeric IDs and encryption key', () =
 it('generates the current authorization link with state and no partner key', () => {
   const state = 'ab'.repeat(32)
   const url = new URL(shopeeAuthorizationUrl(shopeeConfiguration(origin), state))
-  expect(url.origin + url.pathname).toBe('https://open.sandbox.test-stable.shopee.com.br/auth')
+  expect(url.origin + url.pathname).toBe('https://open.sandbox.test-stable.shopee.com/auth')
   expect(Object.fromEntries(url.searchParams)).toEqual({ partner_id: '123', auth_type: 'seller',
     redirect_uri: `${origin}/integrations/shopee/callback`, response_type: 'code', state })
   expect(url.href).not.toContain('partner-test')
