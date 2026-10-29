@@ -224,3 +224,24 @@ A sincronização periódica roda em segundo plano. Notificações automáticas 
 Para validar em homologação, conecte um vendedor de teste do Mercado Livre e realize compras com outro usuário de teste. Confira os IDs, totais, cancelamentos e reembolsos entre o Mercado Livre e o painel; repita a atualização para verificar que não há duplicação. Uma conta sem pedidos deve produzir uma lista vazia, sem carregar os dados fictícios da demonstração. Consulte a [documentação de testes do Mercado Livre](https://developers.mercadolivre.com.br/pt_br/realizacao-de-testes/realizacao-de-testes).
 
 A implantação pública exige HTTPS, segredos próprios, backups e revisão de segurança. Não reutilize as credenciais locais do banco em produção. Há pendências de atualização das ferramentas de desenvolvimento e revisão visual.
+
+## Google Analytics 4
+
+O frontend usa o ID público `G-9Y6DVJWVG3` em `apps/web/src/analytics.ts`,
+somente no host `teste.omnimark.tech`. Localhost e outros hosts não coletam.
+Não é necessário adicionar segredo ou variável no Coolify para o stage.
+Produção deve ter configuração própria antes de sua publicação.
+
+A tag só carrega após aceitar Analytics. A opção “Preferências de cookies”
+permite recusar depois, removendo os cookies criados pelo app e recarregando.
+São enviados `page_view` com telas fixas, `login`, `demo_start` e
+`marketplace_connect_start` com o marketplace. URLs reais, buscas, identificadores
+de usuários/empresas e dados de pedidos não são parâmetros desses eventos.
+
+No fluxo Web do GA4, desative a **Medição otimizada**: a aplicação controla
+os eventos explicitamente para evitar duplicatas e coleta automática de
+formulários, buscas ou URLs. Confira também a retenção da propriedade.
+Após o deploy, aceite Analytics no site e navegue entre as telas. Confira
+`page_view` e os eventos no relatório **Tempo real**; valide no navegador que
+recusar antes do aceite não carrega `gtag/js` nem envia requisições Analytics.
+O teste de instalação do Google pode exigir aceitar Analytics primeiro.

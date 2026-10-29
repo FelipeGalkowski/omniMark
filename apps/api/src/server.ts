@@ -26,6 +26,9 @@ await app.register(cookie)
 await app.register(helmet, { contentSecurityPolicy: { directives: {
   styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
   fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+  scriptSrc: ["'self'", 'https://www.googletagmanager.com'],
+  connectSrc: ["'self'", 'https://www.google-analytics.com', 'https://region1.google-analytics.com', 'https://www.googletagmanager.com'],
+  imgSrc: ["'self'", 'data:', 'https://www.google-analytics.com', 'https://region1.google-analytics.com'],
 } } })
 await app.register(rateLimit, { max: 100, timeWindow: '1 minute' })
 const secure = process.env.NODE_ENV === 'production'

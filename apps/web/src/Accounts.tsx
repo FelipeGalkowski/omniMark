@@ -1,4 +1,5 @@
 import { Icon } from './Icon'
+import { trackEvent } from './analytics'
 import { api } from "./api"
 import { useEffect, useRef, useState } from "react"
 import { useAuth } from "./auth"
@@ -332,6 +333,7 @@ function ConnectModal({ onClose, onConnect, demo, companyId }: { companyId: stri
     try {
       if (selMkt !== 'mercadolivre' && selMkt !== 'magalu' && selMkt !== 'shopee') return
       const result = await api<{ url: string }>(`/companies/${companyId}/integrations/${selMkt}/authorize`, { method: "POST", body: "{}" })
+      trackEvent('marketplace_connect_start', selMkt)
       window.location.assign(result.url)
     } catch (failure) { setError((failure as Error).message); setBusy(false) }
   }

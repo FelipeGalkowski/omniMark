@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import AnalyticsConsent from './AnalyticsConsent'
+import { trackScreen, trackEvent } from './analytics'
 import { ALL_ORDERS, DEFAULT_COMPANIES, INITIAL_ACCOUNTS, type Account, type Company, type Page, type Order } from './data'
 import { ThemeContext, type ThemeMode } from './theme'
 import { AuthContext, type User } from './auth'
@@ -140,6 +142,7 @@ export default function App() {
   }, [user?.id, user?.isDemoUser, companyId, reloadKey])
 
   function handleLogin(next: User) {
+    trackEvent(next.isDemoUser ? 'demo_start' : 'login')
     requestVersion.current++
     setOrders([])
     setUser(next); setError(''); setAuthNotice(''); setCompanyError(''); setPage('overview')
@@ -177,6 +180,11 @@ export default function App() {
   function openVerification(email: string) { setVerificationEmail(email); setAuthNotice(''); setAuthScreen('verify') }
   function backToLogin() { setResetToken(null); setError(''); setAuthScreen('login') }
   const demo = !!user?.isDemoUser
+  useEffect(() => {
+    if (!ready) return
+    if (!user) trackScreen(authScreen)
+    else if (!loading && !companyError) trackScreen(page === 'myaccount' ? 'myaccount' : company ? page : 'onboarding')
+  }, [ready, user, authScreen, loading, companyError, company, page])
   return <ThemeContext.Provider value={{ isDark, mode: themeMode, setMode: setThemeMode }}>
     {!ready ? <Spinner /> : !user ? <>
       {error && <div className="app-alert" role="alert">{error}</div>}
@@ -203,5 +211,6 @@ export default function App() {
       {showCreate && <CreateCompanyModal onClose={() => setShowCreate(false)} onCreate={addCompany} />}
       {showManage && <ManageCompaniesModal companies={companies} accounts={accounts} onClose={() => setShowManage(false)} onUpdate={updateCompany} onCreateOpen={() => { setShowManage(false); setShowCreate(true) }} />}
     </AuthContext.Provider>}
+    <AnalyticsConsent />
   </ThemeContext.Provider>
 }
