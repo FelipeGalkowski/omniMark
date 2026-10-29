@@ -1,18 +1,30 @@
 import { useState } from 'react'
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Accounts from './Accounts'
 import { AuthContext } from './auth'
 import type { Account } from './data'
 
-function Fixture({ demo = false, canEdit = true, onDisconnected = vi.fn(), marketplace = 'mercadolivre', synchronization, environment, active }: { demo?: boolean; canEdit?: boolean; onDisconnected?: ReturnType<typeof vi.fn>; marketplace?: Account['marketplace']; synchronization?: Account['synchronization']; environment?: Account['environment']; active?: boolean }) {
+function Fixture({ demo = false, canEdit = true, onDisconnected = vi.fn(), marketplace = 'mercadolivre', synchronization, environment, active }: { demo?: boolean; canEdit?: boolean; onDisconnected?: (accountId: string) => void; marketplace?: Account['marketplace']; synchronization?: Account['synchronization']; environment?: Account['environment']; active?: boolean }) {
   const [accounts, setAccounts] = useState<Account[]>([{ id:'account', companyId:'company', name:'Loja teste', marketplace, status:'connected', lastSync:null, synchronization, environment, active }])
   return <AuthContext.Provider value={{ user:{ id:'user', name:'Pessoa', email:'test@example.test', isDemoUser:demo }, updateUser:async () => {} }}>
     <Accounts companyId="company" accounts={accounts} setAccounts={setAccounts} canEdit={canEdit} onDisconnected={onDisconnected} />
   </AuthContext.Provider>
 }
 describe('Lixeira da conta', () => {
+  it('abre a conexão como diálogo e retorna ao botão após Escape', async () => {
+    render(<Fixture />)
+    const user = userEvent.setup()
+    const trigger = screen.getByRole('button', { name:'Conectar nova conta' })
+    await user.click(trigger)
+    const dialog = screen.getByRole('dialog', { name:'Conectar conta' })
+    expect(within(dialog).queryByRole('button', { name:'Amazon' })).toBeNull()
+    expect(within(dialog).getByRole('button', { name:'Mercado Livre' })).toBeTruthy()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+  })
   it('cancela sem requisição e confirma a remoção somente após sucesso', async () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify({ ok:true }), { status:200 }))
     vi.stubGlobal('fetch',fetch)

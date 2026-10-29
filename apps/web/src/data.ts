@@ -84,9 +84,15 @@ export function initialDateRange(demo: boolean) {
 export const MARKETPLACES: MarketplaceConfig[] = [
   { id: "mercadolivre", label: "Mercado Livre", color: "#FFE600", bg: "#FFFBCC", text: "#5C4B00" },
   { id: "magalu",       label: "Magalu",         color: "#0E89FF", bg: "#D6EEFF", text: "#003D75" },
-  { id: "amazon",       label: "Amazon",         color: "#000000", bg: "#E8E8E8", text: "#ffffff" },
-  { id: "shopee",       label: "Shopee",         color: "#EE4D2D", bg: "#FDDDD8", text: "#ffffff" },
+  { id: "amazon",       label: "Amazon",         color: "#000000", bg: "#E8E8E8", text: "#1F2937" },
+  { id: "shopee",       label: "Shopee",         color: "#EE4D2D", bg: "#FDDDD8", text: "#7C2D12" },
 ]
+
+export function marketplaceChartColor(id: MarketplaceId, dark: boolean) {
+  if (id === 'mercadolivre') return dark ? '#FFE600' : '#8A6D00'
+  if (id === 'amazon' && dark) return '#CBD5E1'
+  return MARKETPLACES.find(m => m.id === id)!.color
+}
 
 
 export const STATUS_CONFIG: Record<OrderStatus, { label: string; bg: string; color: string; dot: string; msg: string }> = {

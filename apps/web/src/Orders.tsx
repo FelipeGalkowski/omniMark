@@ -2,6 +2,7 @@ import { Icon } from './Icon'
 import { useState, useMemo } from "react"
 import { useAuth } from "./auth"
 import { orderSale, confirmedRefunds } from './kpis'
+import Dialog from './Dialog'
 import {
   initialDateRange, MARKETPLACES, ALL_STATUSES, STATUS_CONFIG,
   orderItemsTotal,
@@ -19,9 +20,12 @@ interface OrdersPageProps {
   companyId: string
   accounts: Account[]
   orders: Order[]
+  loading?: boolean
+  loadError?: boolean
+  onRetry?: () => void
 }
 
-export default function OrdersPage({ companyId, accounts, orders }: OrdersPageProps) {
+export default function OrdersPage({ companyId, accounts, orders, loading = false, loadError = false, onRetry }: OrdersPageProps) {
   const { user } = useAuth()
   const defaults = useMemo(() => initialDateRange(user.isDemoUser), [user.isDemoUser])
   const companyAccounts = accounts.filter(a => a.companyId === companyId && a.active !== false)
@@ -29,22 +33,22 @@ export default function OrdersPage({ companyId, accounts, orders }: OrdersPagePr
 
   const [dateRange,     setDateRange]     = useState(defaults)
   const [selMarkets,    setSelMarkets]    = useState<MarketplaceId[]>(MARKETPLACES.map(m => m.id))
-  const [selAccounts,   setSelAccounts]   = useState<string[]>(allAccountIds)
+  const [selAccounts,   setSelAccounts]   = useState<string[] | null>(null)
   const [selStatuses,   setSelStatuses]   = useState<OrderStatus[]>([...ALL_STATUSES])
   const [search,        setSearch]        = useState("")
   const [page,          setPage]          = useState(1)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
 
-  const effectiveAccounts = selAccounts.filter(id => allAccountIds.includes(id))
+  const effectiveAccounts = (selAccounts ?? allAccountIds).filter(id => allAccountIds.includes(id))
 
   function toggleMarket(id: MarketplaceId)  { setSelMarkets(p => p.includes(id) ? (p.length>1?p.filter(x=>x!==id):p) : [...p,id]); setPage(1) }
-  function toggleAccount(id: string)         { setSelAccounts(p => p.includes(id) ? p.filter(x=>x!==id) : [...p,id]); setPage(1) }
+  function toggleAccount(id: string)         { setSelAccounts(p => (p ?? allAccountIds).includes(id) ? (p ?? allAccountIds).filter(x=>x!==id) : [...(p ?? allAccountIds),id]); setPage(1) }
   function toggleStatus(s: OrderStatus)      { setSelStatuses(p => p.includes(s) ? p.filter(x=>x!==s) : [...p,s]); setPage(1) }
 
   function clearFilters() {
     setDateRange(defaults)
     setSelMarkets(MARKETPLACES.map(m => m.id))
-    setSelAccounts(allAccountIds)
+    setSelAccounts(null)
     setSelStatuses([...ALL_STATUSES])
     setSearch("")
     setPage(1)
@@ -58,21 +62,25 @@ export default function OrdersPage({ companyId, accounts, orders }: OrdersPagePr
       selMarkets.includes(o.marketplace) &&
       selStatuses.includes(o.status) &&
       o.date >= dateRange.from &&
-      o.date <= new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate(), 23,59,59) &&
+      o.date < new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate() + 1) &&
       (term === "" || o.id.toLowerCase().includes(term))
     )
   }, [orders, companyId, effectiveAccounts, selMarkets, selStatuses, dateRange, search])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const pageOrders = filtered.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE)
+  const currentPage = Math.min(page, totalPages)
+  const pageOrders = filtered.slice((currentPage-1)*PAGE_SIZE, currentPage*PAGE_SIZE)
+  const hasImportedOrders = orders.some(order => order.companyId === companyId && allAccountIds.includes(order.accountId))
 
   return (
     <div className="page-body" style={{ padding:"24px 28px", display:"flex", flexDirection:"column", gap:16, position:"relative" }}>
       <SandboxNotice accounts={companyAccounts} />
+      {loadError && hasImportedOrders && <div className="app-alert app-alert--warning" role="status">Não foi possível atualizar os pedidos. Exibindo a última consulta disponível.{onRetry && <button style={btnSec} onClick={onRetry}>Tentar novamente</button>}</div>}
 
       <div style={{ background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:12, padding:"14px 18px", display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
         <div style={{ position:"relative", flexShrink:0 }}>
           <input
+            aria-label="Buscar por número do pedido"
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(1) }}
             placeholder="Buscar por nº do pedido…"
@@ -90,12 +98,14 @@ export default function OrdersPage({ companyId, accounts, orders }: OrdersPagePr
 
       {filtered.length > 0 && (
         <div style={{ fontSize:12, color:"var(--t3)" }}>
-          <strong style={{ color:"var(--t2)" }}>{filtered.length.toLocaleString("pt-BR")}</strong> pedidos encontrados · página {page} de {totalPages}
+          <strong style={{ color:"var(--t2)" }}>{filtered.length.toLocaleString("pt-BR")}</strong> pedidos encontrados · página {currentPage} de {totalPages}
         </div>
       )}
 
-      {filtered.length === 0 ? (
-        <EmptyState icon="orders" title={user.isDemoUser ? "Nenhum pedido encontrado" : "Nenhum pedido sincronizado"} desc={user.isDemoUser ? "Ajuste os filtros ou a busca para encontrar pedidos." : "Os pedidos aparecerão aqui quando as integrações com marketplaces estiverem disponíveis."} action={user.isDemoUser ? <button onClick={clearFilters} style={btnPri}>Limpar filtros</button> : undefined} />
+      {loading ? <div role="status"><EmptyState icon="clock" title="Carregando pedidos" desc="Consultando os pedidos e as contas desta empresa." /></div>
+      : loadError && !hasImportedOrders ? <EmptyState icon="alert" title="Não foi possível carregar os pedidos" desc="Tente consultar os pedidos novamente." action={onRetry && <button onClick={onRetry} style={btnSec}>Tentar novamente</button>} />
+      : filtered.length === 0 ? (
+        <EmptyState icon="orders" title={hasImportedOrders || user.isDemoUser ? "Nenhum pedido encontrado" : "Nenhum pedido sincronizado"} desc={hasImportedOrders || user.isDemoUser ? "Ajuste os filtros ou a busca para encontrar pedidos." : "A primeira importação começa após conectar uma loja. Confira o andamento em Contas."} action={<button onClick={clearFilters} style={btnPri}>Limpar filtros</button>} />
       ) : (
         <div style={{ background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:14, overflow:"auto" }}>
           <table style={{ minWidth:760, width:"100%", borderCollapse:"collapse", fontSize:13 }}>
@@ -117,7 +127,7 @@ export default function OrdersPage({ companyId, accounts, orders }: OrdersPagePr
                     onMouseEnter={e => (e.currentTarget.style.background = "var(--hover)")}
                     onMouseLeave={e => (e.currentTarget.style.background = "")}
                   >
-                    <td style={{ padding:"12px 14px", fontFamily:"'JetBrains Mono',monospace", fontSize:12, color:"var(--t2)", whiteSpace:"nowrap" }}>{o.id}</td>
+                    <td style={{ padding:"12px 14px", fontFamily:"'JetBrains Mono',monospace", fontSize:12, color:"var(--t2)", whiteSpace:"nowrap" }}><button className="order-details-trigger" aria-label={`Ver pedido ${o.id}`} onClick={event => { event.stopPropagation(); setSelectedOrder(o) }}>{o.id}</button></td>
                     <td style={{ padding:"12px 14px", color:"var(--t2)", whiteSpace:"nowrap" }}>{formatDate(o.date)}</td>
                     <td style={{ padding:"12px 14px" }}>
                       <div style={{ display:"flex", alignItems:"center", gap:6 }}>
@@ -140,14 +150,14 @@ export default function OrdersPage({ companyId, accounts, orders }: OrdersPagePr
 
       {totalPages > 1 && (
         <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, flexWrap:"wrap" }}>
-          <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1} style={{ ...btnSec, padding:"5px 12px", fontSize:12, opacity:page===1?0.4:1 }}><Icon name="arrowLeft" /> Anterior</button>
+          <button onClick={() => setPage(Math.max(1,currentPage-1))} disabled={currentPage===1} style={{ ...btnSec, padding:"5px 12px", fontSize:12, opacity:currentPage===1?0.4:1 }}><Icon name="arrowLeft" /> Anterior</button>
           {Array.from({length:Math.min(7,totalPages)},(_,i) => {
-            const p = totalPages <= 7 ? i+1 : page <= 4 ? i+1 : page >= totalPages-3 ? totalPages-6+i : page-3+i
+            const p = totalPages <= 7 ? i+1 : currentPage <= 4 ? i+1 : currentPage >= totalPages-3 ? totalPages-6+i : currentPage-3+i
             return (
-              <button key={p} onClick={() => setPage(p)} style={{ width:32, height:32, borderRadius:7, border:"1.5px solid", borderColor:page===p?"var(--t1)":"var(--bd)", background:page===p?"var(--pri)":"transparent", color:page===p?"var(--pri-t)":"var(--t2)", fontSize:13, fontWeight:page===p?700:400, cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>{p}</button>
+              <button key={p} onClick={() => setPage(p)} style={{ width:32, height:32, borderRadius:7, border:"1.5px solid", borderColor:currentPage===p?"var(--t1)":"var(--bd)", background:currentPage===p?"var(--pri)":"transparent", color:currentPage===p?"var(--pri-t)":"var(--t2)", fontSize:13, fontWeight:currentPage===p?700:400, cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>{p}</button>
             )
           })}
-          <button onClick={() => setPage(p => Math.min(totalPages,p+1))} disabled={page===totalPages} style={{ ...btnSec, padding:"5px 12px", fontSize:12, opacity:page===totalPages?0.4:1 }}>Próxima <Icon name="arrowRight" /></button>
+          <button onClick={() => setPage(Math.min(totalPages,currentPage+1))} disabled={currentPage===totalPages} style={{ ...btnSec, padding:"5px 12px", fontSize:12, opacity:currentPage===totalPages?0.4:1 }}>Próxima <Icon name="arrowRight" /></button>
         </div>
       )}
 
@@ -168,19 +178,17 @@ function OrderPanel({ order, accounts, onClose }: { order: Order; accounts: Acco
   const cfg        = STATUS_CONFIG[order.status]
 
   return (
-    <>
-      <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.25)", zIndex:40 }} />
-      <div style={{ position:"fixed", top:0, right:0, bottom:0, width:420, maxWidth:"100vw", background:"var(--sf)", boxShadow:"-4px 0 32px var(--shd2)", zIndex:50, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+    <Dialog label={`Detalhes do pedido ${order.id}`} onClose={onClose} panel>
         <div style={{ padding:"18px 22px", borderBottom:"1px solid var(--bd)", display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:12 }}>
           <div>
             <div style={{ fontSize:11, color:"var(--t3)", fontWeight:600, textTransform:"uppercase", letterSpacing:"0.06em" }}>Detalhes do pedido</div>
-            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:16, fontWeight:700, color:"var(--t1)", marginTop:4 }}>{order.id}</div>
+            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:16, fontWeight:700, color:"var(--t1)", marginTop:4, overflowWrap:'anywhere' }}>{order.id}</div>
             <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:6 }}>
               <StatusBadge status={order.status} />
               <span style={{ fontSize:12, color:"var(--t3)" }}>{formatDateTime(order.date)}</span>
             </div>
           </div>
-          <button onClick={onClose} style={{ width:28, height:28, borderRadius:7, border:"1.5px solid var(--bd)", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, color:"var(--t3)" }}>
+          <button aria-label="Fechar detalhes do pedido" onClick={onClose} style={{ width:28, height:28, borderRadius:7, border:"1.5px solid var(--bd)", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, color:"var(--t3)" }}>
             <Icon name="close" />
           </button>
         </div>
@@ -239,8 +247,7 @@ function OrderPanel({ order, accounts, onClose }: { order: Order; accounts: Acco
 
           <div style={{ fontSize:11, color:"var(--t4)" }}>Última atualização: {formatDateTime(order.date)}</div>
         </div>
-      </div>
-    </>
+    </Dialog>
   )
 }
 

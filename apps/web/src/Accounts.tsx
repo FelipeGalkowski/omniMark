@@ -1,5 +1,6 @@
 import { Icon } from './Icon'
 import { trackEvent } from './analytics'
+import Dialog from './Dialog'
 import { api } from "./api"
 import { useEffect, useRef, useState } from "react"
 import { useAuth } from "./auth"
@@ -146,13 +147,13 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
                   </p>}
 
                   {acct.active !== false && acct.errorMsg && (
-                    <div style={{ marginTop:8, background: acct.status==="error"?"#FEE2E2":"#FEF3C7", border:`1px solid ${acct.status==="error"?"#FCA5A5":"#FCD34D"}`, borderRadius:8, padding:"8px 12px", fontSize:12, color: acct.status==="error"?"#991B1B":"#92400E" }}>
+                    <div style={{ marginTop:8, background: acct.status==="error"?"var(--error-bg)":"var(--warning-bg)", border:`1px solid ${acct.status==="error"?"var(--error-border)":"var(--warning-border)"}`, borderRadius:8, padding:"8px 12px", fontSize:12, color: acct.status==="error"?"var(--error-text)":"var(--warning-text)" }}>
                       {acct.errorMsg}
                     </div>
                   )}
 
                   {fb && (
-                    <div style={{ marginTop:8, background:fb.ok?"#DCFCE7":"#FEE2E2", border:`1px solid ${fb.ok?"#86EFAC":"#FCA5A5"}`, borderRadius:8, padding:"8px 12px", fontSize:12, color:fb.ok?"#166534":"#991B1B" }}>
+                    <div style={{ marginTop:8, background:fb.ok?"var(--success-bg)":"var(--error-bg)", border:`1px solid ${fb.ok?"var(--success-border)":"var(--error-border)"}`, borderRadius:8, padding:"8px 12px", fontSize:12, color:fb.ok?"var(--success-text)":"var(--error-text)" }}>
                       <Icon name={fb.ok ? "check" : "alert"} /> {fb.msg}
                     </div>
                   )}
@@ -171,7 +172,7 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
                     style={{ ...btnSec, padding:'7px', color:'var(--t3)', opacity:isSyncing ? 0.5 : 1 }}
                   ><Icon name="trash" size={18} /></button>}
                   {acct.active !== false && acct.status === "reconnect_needed" && !isSyncing && (
-                    <button disabled={!demo && (!canEdit || !['mercadolivre', 'magalu', 'shopee'].includes(acct.marketplace))} onClick={() => demo ? triggerReconnect(acct.id) : setConnectOpen(true)} style={{ ...btnPri, fontSize:12, padding:"6px 14px", background:"#EF4444" }}>
+                    <button disabled={!demo && (!canEdit || !['mercadolivre', 'magalu', 'shopee'].includes(acct.marketplace))} onClick={() => demo ? triggerReconnect(acct.id) : setConnectOpen(true)} style={{ ...btnPri, fontSize:12, padding:"6px 14px", background:"var(--danger-bg)", color:"var(--danger-text)" }}>
                       Reconectar
                     </button>
                   )}
@@ -209,12 +210,9 @@ function RenameModal({ account, onClose, onSave }: { account: Account; onClose: 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const saving = useRef(false)
-  const dialog = useRef<HTMLFormElement>(null)
   const input = useRef<HTMLInputElement>(null)
   useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null
     input.current?.focus(); input.current?.select()
-    return () => { if (previous?.isConnected) previous.focus() }
   }, [])
 
   async function save(event: React.FormEvent) {
@@ -229,71 +227,40 @@ function RenameModal({ account, onClose, onSave }: { account: Account; onClose: 
     finally { saving.current = false; setBusy(false) }
   }
 
-  return <div style={{ position:'fixed', inset:0, zIndex:60, background:'rgba(0,0,0,0.35)', display:'grid', gridTemplateColumns:'minmax(0,1fr)', placeItems:'center', padding:16 }}>
-    <form ref={dialog} role="dialog" aria-modal="true" aria-labelledby="rename-title" aria-describedby="rename-description" aria-busy={busy} onSubmit={save}
-      onKeyDown={event => {
-        if (event.key === 'Escape') { event.preventDefault(); if (!saving.current) onClose() }
-        if (event.key === 'Tab') {
-          const controls = Array.from(dialog.current?.querySelectorAll<HTMLElement>('input:not(:disabled), button:not(:disabled)') ?? [])
-          const first = controls[0], last = controls[controls.length - 1]
-          if (!first) { event.preventDefault(); return }
-          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
-          if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
-        }
-      }}
-      style={{ width:440, maxWidth:'100%', boxSizing:'border-box', background:'var(--sf)', border:'1px solid var(--bd)', borderRadius:14, padding:24, boxShadow:'0 16px 48px var(--shd2)' }}>
+  return <Dialog label="Renomear conta" describedBy="rename-description" onClose={() => { if (!saving.current) onClose() }} busy={busy} style={{ padding:24 }}>
+    <form onSubmit={save}>
       <h2 id="rename-title" style={{ margin:'0 0 12px', fontSize:18, color:'var(--t1)' }}>Renomear conta</h2>
       <p id="rename-description" style={{ fontSize:13, lineHeight:1.6, color:'var(--t2)' }}>Escolha um nome para identificar esta loja no OmniMark.</p>
       <label htmlFor="account-name" style={{ display:'block', marginBottom:6, fontSize:12, fontWeight:600, color:'var(--t2)' }}>Nome da conta</label>
       <input ref={input} id="account-name" value={name} maxLength={120} disabled={busy} aria-invalid={!!error} aria-describedby={error ? 'rename-error' : undefined}
         onChange={event => { setName(event.target.value); setError('') }}
         style={{ width:'100%', boxSizing:'border-box', padding:'10px 12px', borderRadius:8, border:'1px solid var(--bd)', background:'var(--inp)', color:'var(--t1)', font:'inherit', fontSize:13 }} />
-      {error && <p id="rename-error" role="alert" style={{ fontSize:13, color:'#DC2626' }}>{error}</p>}
+      {error && <p id="rename-error" role="alert" className="form-error">{error}</p>}
       <div style={{ display:'flex', justifyContent:'flex-end', gap:10, marginTop:20 }}>
         <button type="button" disabled={busy} style={btnSec} onClick={() => { if (!saving.current) onClose() }}>Cancelar</button>
         <button type="submit" disabled={busy} style={btnPri}>{busy ? 'Salvando…' : 'Salvar nome'}</button>
       </div>
     </form>
-  </div>
+  </Dialog>
 }
 
 function DisconnectModal({ account, busy, error, onClose, onConfirm }: {
   account: Account; busy: boolean; error: string; onClose: () => void; onConfirm: () => void
 }) {
-  const dialog = useRef<HTMLDivElement>(null)
-  const cancel = useRef<HTMLButtonElement>(null)
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null
-    cancel.current?.focus()
-    return () => { if (previous?.isConnected) previous.focus() }
-  }, [])
-  return <div style={{ position:'fixed', inset:0, zIndex:60, background:'rgba(0,0,0,0.35)', display:'grid', placeItems:'center', padding:16 }}>
-    <div ref={dialog} role="alertdialog" aria-modal="true" aria-labelledby="disconnect-title" aria-describedby="disconnect-description" aria-busy={busy}
-      onKeyDown={event => {
-        if (event.key === 'Escape') { event.preventDefault(); if (!busy) onClose() }
-        if (event.key === 'Tab') {
-          const buttons = Array.from(dialog.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])
-          const first = buttons[0], last = buttons[buttons.length - 1]
-          if (!first) { event.preventDefault(); return }
-          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
-          if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
-        }
-      }}
-      style={{ width:440, maxWidth:'100%', background:'var(--sf)', border:'1px solid var(--bd)', borderRadius:14, padding:24, boxShadow:'0 16px 48px var(--shd2)' }}>
+  return <Dialog label="Desconectar conta?" describedBy="disconnect-description" role="alertdialog" onClose={onClose} busy={busy} style={{ padding:24 }}>
       <h2 id="disconnect-title" style={{ margin:'0 0 12px', fontSize:18, color:'var(--t1)' }}>Desconectar conta?</h2>
       <p id="disconnect-description" style={{ fontSize:13, lineHeight:1.6, color:'var(--t2)', overflowWrap:'anywhere' }}>
         A conta <strong>{account.name}</strong> e seus pedidos importados serão removidos do OmniMark.
         Sua conta e seus pedidos no marketplace não serão alterados. Para voltar a importar, conecte a conta novamente.
       </p>
-      {error && <p role="alert" style={{ fontSize:13, color:'#DC2626' }}>{error}</p>}
+      {error && <p role="alert" className="form-error">{error}</p>}
       <div style={{ display:'flex', justifyContent:'flex-end', gap:10, marginTop:20 }}>
-        <button ref={cancel} disabled={busy} style={btnSec} onClick={onClose}>Cancelar</button>
-        <button disabled={busy} style={{ ...btnPri, background:'#B91C1C' }} onClick={onConfirm}>
+        <button data-autofocus disabled={busy} style={btnSec} onClick={onClose}>Cancelar</button>
+        <button disabled={busy} style={{ ...btnPri, background:'var(--danger-bg)', color:'var(--danger-text)' }} onClick={onConfirm}>
           {busy ? 'Desconectando…' : 'Desconectar conta'}
         </button>
       </div>
-    </div>
-  </div>
+  </Dialog>
 }
 
 
@@ -359,9 +326,7 @@ function ConnectModal({ onClose, onConnect, demo, companyId }: { companyId: stri
   const mkt = selMkt ? MARKETPLACES.find(m => m.id === selMkt)! : null
 
   return (
-    <>
-      <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.25)", zIndex:40 }} />
-      <div style={{ position:"fixed", top:"50%", left:"50%", transform:"translate(-50%,-50%)", background:"var(--sf)", borderRadius:16, boxShadow:`0 16px 48px var(--shd2)`, zIndex:50, width:440, maxWidth:"calc(100vw - 32px)", overflow:"hidden" }}>
+    <Dialog label="Conectar conta" onClose={onClose}>
         <div style={{ padding:"20px 24px 0", display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
           <h2 style={{ margin:0, fontSize:16, fontWeight:700, color:"var(--t1)" }}>
             {step==="choose" && "Conectar conta"}
@@ -415,7 +380,7 @@ function ConnectModal({ onClose, onConnect, demo, companyId }: { companyId: stri
                   style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1.5px solid ${error?"#EF4444":"var(--bd)"}`, fontSize:13, fontFamily:"'DM Sans',sans-serif", outline:"none", color:"var(--t1)", background:"var(--inp)" }}
                   autoFocus
                 />
-                {error && <span style={{ fontSize:11, color:"#EF4444", marginTop:4, display:"block" }}>{error}</span>}
+                {error && <span style={{ fontSize:11, color:"var(--error-text)", marginTop:4, display:"block" }}>{error}</span>}
                 <p style={{ fontSize:11, color:"var(--t3)", marginTop:6 }}>Dê um nome que ajude a identificar esta conta dentro do Omnimark.</p>
               </div>
               <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
@@ -448,7 +413,6 @@ function ConnectModal({ onClose, onConnect, demo, companyId }: { companyId: stri
             </div>
           )}
         </div>
-      </div>
-    </>
+    </Dialog>
   )
 }

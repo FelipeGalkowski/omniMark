@@ -14,6 +14,9 @@
                     "db:migrate":  "npm run db:migrate -w @omnimark/api",
                     "test":  "npm run test -w @omnimark/web && npm run test -w @omnimark/api -- --run"
                 },
+    "overrides": {
+        "@prisma/config": { "deepmerge-ts": "8.0.2" }
+    },
     "engines":  {
                     "node":  "\u003e=22"
                 }

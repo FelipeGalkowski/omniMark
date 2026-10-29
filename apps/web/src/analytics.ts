@@ -16,14 +16,30 @@ let consent: Consent | null = readConsent()
 let initialized = false
 let currentScreen: Screen | null = null
 let lastScreen: Screen | null = null
+const consentListeners = new Set<(value: Consent | null) => void>()
 export function analyticsAvailable() { return window.location.hostname === 'teste.omnimark.tech' }
-export function readConsent(): Consent | null {
+function storedConsent(): Consent | null | undefined {
   try { const value = localStorage.getItem(CONSENT_KEY); return value === 'granted' || value === 'denied' ? value : null }
-  catch { return null }
+  catch { return undefined }
+}
+export function readConsent(): Consent | null {
+  return storedConsent() ?? null
+}
+function syncConsent() {
+  const value = storedConsent()
+  if (value !== undefined && value !== consent) applyConsent(value)
+}
+export function subscribeAnalyticsConsent(listener: (value: Consent | null) => void) {
+  consentListeners.add(listener)
+  const onStorage = (event: StorageEvent) => { if (event.key === CONSENT_KEY || event.key === null) syncConsent() }
+  window.addEventListener('storage', onStorage)
+  syncConsent()
+  return () => { consentListeners.delete(listener); window.removeEventListener('storage', onStorage) }
 }
 function initialize() {
   if (initialized || !analyticsAvailable() || consent !== 'granted') return
   initialized = true
+  ;(window as unknown as Record<string, unknown>)[`ga-disable-${MEASUREMENT_ID}`] = false
   window.dataLayer = window.dataLayer || []
   window.gtag = function () { window.dataLayer!.push(arguments) }
   window.gtag('consent', 'default', { analytics_storage: 'granted', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' })
@@ -41,6 +57,7 @@ function initialize() {
 }
 export function trackScreen(screen: Screen) {
   currentScreen = screen
+  syncConsent()
   if (consent !== 'granted' || !analyticsAvailable()) return
   initialize()
   if (lastScreen === screen) return
@@ -49,13 +66,18 @@ export function trackScreen(screen: Screen) {
   lastScreen = screen
 }
 export function trackEvent(event: 'login' | 'demo_start' | 'marketplace_connect_start', marketplace?: 'mercadolivre' | 'magalu' | 'shopee') {
+  syncConsent()
   if (consent !== 'granted' || !analyticsAvailable()) return
   initialize()
   window.gtag?.('event', event, marketplace ? { marketplace } : {})
 }
 export function setAnalyticsConsent(value: Consent) {
-  consent = value
   try { localStorage.setItem(CONSENT_KEY, value) } catch { /* Keep the choice for this page when storage is unavailable. */ }
+  applyConsent(value)
+}
+function applyConsent(value: Consent | null) {
+  consent = value
+  consentListeners.forEach(listener => listener(value))
   if (value === 'granted') {
     if (currentScreen) trackScreen(currentScreen)
   } else if (initialized) {

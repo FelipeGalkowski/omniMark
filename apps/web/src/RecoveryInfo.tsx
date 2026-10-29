@@ -41,8 +41,8 @@ export default function RecoveryInfo({ onBack, token }: { onBack: () => void; to
     <div><h1>{done ? 'Senha redefinida' : requestMode ? 'Recuperar acesso' : 'Crie uma nova senha'}</h1><p style={{ marginTop: 8 }}>{done ? 'Sua senha foi alterada e as sessões anteriores foram encerradas. Entre usando a nova senha.' : requestMode ? 'Informe seu e-mail para receber um link de recuperação válido por 30 minutos.' : 'Escolha uma senha de 10 a 128 caracteres para sua conta OmniMark.'}</p></div>
     {!done && <form className="stack-form" onSubmit={submit}>
       {requestMode ? <FormField label="E-mail"><input type="email" value={email} onChange={event => setEmail(event.target.value)} autoComplete="email" required maxLength={254} placeholder="seu@email.com" style={inputStyle(false)} /></FormField> : <>
-        <FormField label="Nova senha"><PasswordInput value={password} onChange={setPassword} show={showPassword} onToggle={() => setShowPassword(value => !value)} error={!!error} placeholder="Mínimo 10 caracteres" /></FormField>
-        <FormField label="Confirmar nova senha"><PasswordInput value={confirm} onChange={setConfirm} show={showConfirm} onToggle={() => setShowConfirm(value => !value)} error={!!error} placeholder="Repita a nova senha" /></FormField>
+        <FormField label="Nova senha"><PasswordInput autoComplete="new-password" value={password} onChange={setPassword} show={showPassword} onToggle={() => setShowPassword(value => !value)} error={!!error} placeholder="Mínimo 10 caracteres" /></FormField>
+        <FormField label="Confirmar nova senha"><PasswordInput autoComplete="new-password" value={confirm} onChange={setConfirm} show={showConfirm} onToggle={() => setShowConfirm(value => !value)} error={!!error} placeholder="Repita a nova senha" /></FormField>
       </>}
       {error && <p className="form-error" role="alert">{error}</p>}
       {message && <p className="auth-feedback" role="status">{message}</p>}

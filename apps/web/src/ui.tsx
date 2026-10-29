@@ -1,3 +1,4 @@
+import { usePopover } from './usePopover'
 import { Icon, type IconName } from './Icon'
 import { useState, useEffect, useRef } from "react"
 import { useAuth } from "./auth"
@@ -18,7 +19,7 @@ export interface DateRangeValue {
 export function SandboxNotice({ accounts }: { accounts: Account[] }) {
   const marketplaces = [...new Set(accounts.filter(account => account.active !== false && account.environment === 'SANDBOX').map(account => MARKETPLACES.find(item => item.id === account.marketplace)?.label).filter(Boolean))]
   if (!marketplaces.length) return null
-  return <div role="note" style={{ padding:'10px 16px', border:'1px solid #93C5FD', borderRadius:10, background:'#EFF6FF', color:'#1E40AF', fontSize:12, lineHeight:1.6 }}>
+  return <div role="note" style={{ padding:'10px 16px', border:'1px solid var(--info-border)', borderRadius:10, background:'var(--info-bg)', color:'var(--info-text)', fontSize:12, lineHeight:1.6 }}>
     <strong>Sandbox {marketplaces.join(' e ')}.</strong> Os pedidos desta integração são fictícios e podem compor os indicadores exibidos. Use-os somente para testes.
   </div>
 }
@@ -52,14 +53,7 @@ export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
   const [local, setLocal] = useState<DateRange>({ from: value.from, to: value.to })
   const [mFrom, setMFrom] = useState(new Date(value.from.getFullYear(), value.from.getMonth(), 1))
   const [mTo,   setMTo]   = useState(new Date(value.to.getFullYear(),   value.to.getMonth(),   1))
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
-    document.addEventListener("mousedown", h)
-    return () => document.removeEventListener("mousedown", h)
-  }, [open])
+  const { ref, id } = usePopover(open, () => setOpen(false))
 
   function applyShortcut(type: "thisMonth" | "lastMonth" | "last30") {
     const r = shortcutRange(type, user.isDemoUser ? DEMO_NOW : new Date())
@@ -77,12 +71,12 @@ export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
   const label = `${fmtShort(value.from)} – ${fmtShort(value.to)}`
 
   return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <button aria-label="Selecionar período" aria-expanded={open} onClick={() => { setLocal(value); setMFrom(new Date(value.from.getFullYear(), value.from.getMonth(), 1)); setMTo(new Date(value.to.getFullYear(), value.to.getMonth(), 1)); setOpen(v => !v) }} style={triggerStyle}>
+    <div data-popover ref={ref} style={{ position: "relative" }}>
+      <button aria-label="Selecionar período" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => { setLocal(value); setMFrom(new Date(value.from.getFullYear(), value.from.getMonth(), 1)); setMTo(new Date(value.to.getFullYear(), value.to.getMonth(), 1)); setOpen(v => !v) }} style={triggerStyle}>
         <Icon name="calendar" /> {label} <ChevronIcon open={open} />
       </button>
       {open && (
-        <div className="date-popover" style={{ position:"absolute", top:"calc(100% + 6px)", left:0, background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:12, boxShadow:`0 8px 32px var(--shd)`, zIndex:200, overflow:"hidden" }}>
+        <div id={id} role="group" aria-label="Opções de período" className="date-popover" style={{ position:"absolute", top:"calc(100% + 6px)", left:0, background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:12, boxShadow:`0 8px 32px var(--shd)`, zIndex:200, overflow:"hidden" }}>
           <div style={{ display:"flex", flexWrap:"wrap" }}>
             <div style={{ borderRight:"1px solid var(--bd)", padding:"12px 8px", display:"flex", flexDirection:"column", gap:2, minWidth:130 }}>
               <span style={{ fontSize:10, fontWeight:700, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", padding:"0 8px 6px" }}>Atalhos</span>
@@ -123,32 +117,25 @@ interface MultiSelectProps<T extends string> {
 
 function MultiSelectDropdown<T extends string>({ options, selected, onToggle, placeholder, allLabel, minOne }: MultiSelectProps<T>) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
-    document.addEventListener("mousedown", h)
-    return () => document.removeEventListener("mousedown", h)
-  }, [open])
+  const { ref, id } = usePopover(open, () => setOpen(false))
 
   const label = selected.length === 0 ? placeholder
     : selected.length === options.length ? allLabel
     : options.filter(o => selected.includes(o.id)).map(o => o.label).join(", ")
 
   return (
-    <div ref={ref} style={{ position:"relative" }}>
-      <button onClick={() => setOpen(v => !v)} style={{ ...triggerStyle, maxWidth:240 }}>
+    <div data-popover ref={ref} style={{ position:"relative" }}>
+      <button aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(v => !v)} style={{ ...triggerStyle, maxWidth:240 }}>
         <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", flex:1 }}>{label}</span>
         <ChevronIcon open={open} />
       </button>
       {open && (
-        <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:10, boxShadow:`0 8px 24px var(--shd)`, padding:"6px 0", minWidth:200, zIndex:200 }}>
+        <div id={id} role="group" aria-label="Opções de filtro" style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:10, boxShadow:`0 8px 24px var(--shd)`, padding:"6px 0", minWidth:200, zIndex:200 }}>
           {options.map(o => {
             const on = selected.includes(o.id)
             const disabled = minOne && on && selected.length === 1
             return (
-              <button key={o.id} disabled={disabled} onClick={() => onToggle(o.id)} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"9px 14px", border:"none", background:"transparent", cursor:disabled?"not-allowed":"pointer", opacity:disabled?0.4:1, fontFamily:"'DM Sans',sans-serif" }}
+              <button key={o.id} aria-pressed={on} disabled={disabled} onClick={() => onToggle(o.id)} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"9px 14px", border:"none", background:"transparent", cursor:disabled?"not-allowed":"pointer", opacity:disabled?0.4:1, fontFamily:"'DM Sans',sans-serif" }}
                 onMouseEnter={e => { if (!disabled) e.currentTarget.style.background="var(--hover)" }}
                 onMouseLeave={e => e.currentTarget.style.background="transparent"}
               >
@@ -179,32 +166,25 @@ export function MarketplaceDropdown({ selected, onToggle, available }: { selecte
 
 export function AccountDropdown({ accounts, selected, onToggle }: { accounts: Account[]; selected: string[]; onToggle: (id: string) => void }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
-    document.addEventListener("mousedown", h)
-    return () => document.removeEventListener("mousedown", h)
-  }, [open])
+  const { ref, id } = usePopover(open, () => setOpen(false))
 
   const label = selected.length === accounts.length ? "Todas as contas"
     : selected.length === 0 ? "Nenhuma conta"
     : accounts.filter(a => selected.includes(a.id)).map(a => a.name).join(", ")
 
   return (
-    <div ref={ref} style={{ position:"relative" }}>
-      <button onClick={() => setOpen(v => !v)} style={{ ...triggerStyle, maxWidth:220 }}>
+    <div data-popover ref={ref} style={{ position:"relative" }}>
+      <button aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(v => !v)} style={{ ...triggerStyle, maxWidth:220 }}>
         <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", flex:1 }}>{label}</span>
         <ChevronIcon open={open} />
       </button>
       {open && (
-        <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:10, boxShadow:`0 8px 24px var(--shd)`, padding:"6px 0", minWidth:210, zIndex:200 }}>
+        <div id={id} role="group" aria-label="Opções de filtro" style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:10, boxShadow:`0 8px 24px var(--shd)`, padding:"6px 0", minWidth:210, zIndex:200 }}>
           {accounts.map(a => {
             const on = selected.includes(a.id)
             const m = MARKETPLACES.find(x => x.id === a.marketplace)!
             return (
-              <button key={a.id} onClick={() => onToggle(a.id)} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"9px 14px", border:"none", background:"transparent", cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}
+              <button key={a.id} aria-pressed={on} onClick={() => onToggle(a.id)} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"9px 14px", border:"none", background:"transparent", cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}
                 onMouseEnter={e => e.currentTarget.style.background="var(--hover)"}
                 onMouseLeave={e => e.currentTarget.style.background="transparent"}
               >
@@ -229,7 +209,7 @@ export function StatusDropdown({ selected, onToggle }: { selected: OrderStatus[]
       options={ALL_STATUSES.map(s => ({ id: s, label: STATUS_CONFIG[s].label }))}
       selected={selected}
       onToggle={onToggle}
-      placeholder="Todas as situações"
+      placeholder="Nenhuma situação selecionada"
       allLabel="Todas as situações"
     />
   )
@@ -249,8 +229,8 @@ export function InfoTooltip({ text }: { text: string }) {
   }, [show])
 
   return (
-    <div ref={ref} style={{ position:"relative", display:"inline-flex" }} onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
-      <button type="button" aria-label={text} onFocus={() => setShow(true)} onBlur={() => setShow(false)} style={{ display:"inline-flex", border:0, padding:0, background:"transparent", color:"var(--t3)", cursor:"help" }}><Icon name="info" size={14} /></button>
+    <div data-popover ref={ref} style={{ position:"relative", display:"inline-flex" }} onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+      <button type="button" aria-label={text} onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); setShow(false) } }} onFocus={() => setShow(true)} onBlur={() => setShow(false)} style={{ display:"inline-flex", border:0, padding:0, background:"transparent", color:"var(--t3)", cursor:"help" }}><Icon name="info" size={14} /></button>
       {show && (
         <div style={{ position:"absolute", top:"50%", [pos==="right"?"left":"right"]:"calc(100% + 6px)", transform:"translateY(-50%)", background:"var(--t1)", color:"var(--sf)", fontSize:12, lineHeight:1.5, padding:"8px 12px", borderRadius:8, width:240, zIndex:300, boxShadow:"0 4px 16px rgba(0,0,0,0.2)", pointerEvents:"none" }}>
           {text}

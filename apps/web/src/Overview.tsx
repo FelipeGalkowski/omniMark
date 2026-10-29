@@ -6,7 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts"
 import {
-  initialDateRange, MARKETPLACES, STATUS_CONFIG,
+  initialDateRange, MARKETPLACES, STATUS_CONFIG, marketplaceChartColor,
   getMonthsInRange,
   formatBRL, formatBRLFull, formatDateTime, formatPct, formatGrowth,
   type Account, type Order, type MarketplaceId,
@@ -128,7 +128,7 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
   const hasData = filtered.length > 0
 
   const gridColor  = isDark ? "rgba(255,255,255,0.06)" : "#E8EBF2"
-  const axisColor  = isDark ? "#6B7A99" : "#8892A4"
+  const axisColor  = isDark ? "#9AA9C3" : "#59677D"
   const ttStyle: React.CSSProperties = { background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:8, fontFamily:"'DM Sans',sans-serif", boxShadow:`0 4px 16px var(--shd)`, color:"var(--t1)" }
 
   if (accountsLoading) return <div role="status" className="page-body"><EmptyState icon="clock" title="Carregando contas" desc="Consultando as integrações da empresa." /></div>
@@ -147,8 +147,8 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
           {lastSync && <span style={{ fontSize:12, color:"var(--t3)" }}>Última atualização: <strong style={{color:"var(--t2)"}}>{formatDateTime(lastSync)}</strong></span>}
         </div>
         {problemAccounts.length > 0 && (
-          <div style={{ display:"flex", alignItems:"center", gap:8, background:"#FEF3C7", border:"1px solid #FCD34D", borderRadius:8, padding:"6px 12px" }}>
-            <span style={{ fontSize:12, color:"#92400E", fontWeight:500 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, background:"var(--warning-bg)", border:"1px solid var(--warning-border)", borderRadius:8, padding:"6px 12px" }}>
+            <span style={{ fontSize:12, color:"var(--warning-text)", fontWeight:500 }}>
               <Icon name="alert" /> {problemAccounts.map(a => a.name).join(", ")} — dados podem estar desatualizados.
             </span>
           </div>
@@ -164,8 +164,8 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
         <button onClick={clearFilters} style={{ ...btnSec, fontSize:12, padding:"5px 12px" }}>Limpar filtros</button>
       </div>
 
-      {!coverageReady && <div className="app-alert" role="status">O período selecionado não está totalmente coberto pela sincronização das contas. Os indicadores ficam indisponíveis até consultar esse período.</div>}
-      {coverageReady && !summary.complete && <div className="app-alert" role="status">Há pedidos com valores financeiros indisponíveis. Consulte os detalhes em Pedidos; os totais não serão estimados.</div>}
+      {!coverageReady && <div className="app-alert app-alert--info" role="status">O período selecionado não está totalmente coberto pela sincronização das contas. Os indicadores ficam indisponíveis até consultar esse período.</div>}
+      {coverageReady && !summary.complete && <div className="app-alert app-alert--warning" role="status">Há pedidos com valores financeiros indisponíveis. Consulte os detalhes em Pedidos; os totais não serão estimados.</div>}
       {!hasData && coverageReady && (
         <>
           <EmptyState icon="search" title="Nenhuma venda neste período" desc="Os filtros selecionados não retornaram pedidos. Ajuste o período, os canais ou as contas." action={<button onClick={clearFilters} style={btnPri}>Limpar filtros</button>} />
@@ -182,9 +182,9 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
                 return (
                   <div key={m.id} style={{ border:`2px solid ${borderColor}`, borderRadius:14, background:"var(--sf)", overflow:"hidden" }}>
                     <div style={{ background:m.color, padding:"9px 16px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                      <span style={{ fontWeight:800, fontSize:12, color:m.text, letterSpacing:"0.02em" }}>{m.label}</span>
+                      <span style={{ fontWeight:800, fontSize:12, color:m.id === 'magalu' ? '#001C38' : m.id === 'shopee' ? '#230A03' : m.id === 'amazon' ? '#FFFFFF' : m.text, letterSpacing:"0.02em" }}>{m.label}</span>
                       {ready && faturamento > 0 && (
-                        <span style={{ fontSize:10, fontWeight:700, color:m.text, background:"rgba(0,0,0,0.15)", padding:"2px 6px", borderRadius:20, fontFamily:"'JetBrains Mono',monospace" }}>
+                        <span style={{ fontSize:10, fontWeight:700, color:m.id === 'magalu' ? '#001C38' : m.id === 'shopee' ? '#230A03' : m.id === 'amazon' ? '#FFFFFF' : m.text, background:"rgba(0,0,0,0.15)", padding:"2px 6px", borderRadius:20, fontFamily:"'JetBrains Mono',monospace" }}>
                           {formatPct((m.fat/faturamento)*100)}
                         </span>
                       )}
@@ -253,9 +253,9 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
           </div>
 
           <div className="kpi-events">
-            <SecondaryIndicator label="Cancelamentos" count={ready ? summary.cancelled : null} note={ready ? `${summary.cancelledValue === null ? 'Valor indisponível' : formatBRLFull(summary.cancelledValue)} em pedidos cancelados. Reembolsos contabilizados separadamente.` : 'Aguardando sincronização'} color="#EF4444" bg="#FEE2E2" textColor="#991B1B" icon="close" />
-            <SecondaryIndicator label="Devoluções" count={ready ? summary.returns : null} note={ready && summary.returns !== null ? `${summary.returnsPending} em andamento · ${summary.returnsCompleted} concluídas. Contagem por pedido; um pedido pode ter etapas distintas por item.` : 'Aguardando sincronização'} color="#F97316" bg="#FFEDD5" textColor="#9A3412" icon="return" />
-            <SecondaryIndicator label="Pedidos reembolsados" count={ready ? summary.refundOrders : null} note="Inclui reembolsos totais e parciais confirmados, com ou sem devolução." color="#6366F1" bg="#E0E7FF" textColor="#4338CA" icon="refund" />
+            <SecondaryIndicator label="Cancelamentos" count={ready ? summary.cancelled : null} note={ready ? `${summary.cancelledValue === null ? 'Valor indisponível' : formatBRLFull(summary.cancelledValue)} em pedidos cancelados. Reembolsos contabilizados separadamente.` : 'Aguardando sincronização'} color="var(--error-text)" bg="var(--error-bg)" textColor="var(--error-text)" icon="close" />
+            <SecondaryIndicator label="Devoluções" count={ready ? summary.returns : null} note={ready && summary.returns !== null ? `${summary.returnsPending} em andamento · ${summary.returnsCompleted} concluídas. Contagem por pedido; um pedido pode ter etapas distintas por item.` : 'Aguardando sincronização'} color="var(--warning-text)" bg="var(--warning-bg)" textColor="var(--warning-text)" icon="return" />
+            <SecondaryIndicator label="Pedidos reembolsados" count={ready ? summary.refundOrders : null} note="Inclui reembolsos totais e parciais confirmados, com ou sem devolução." color="var(--refund-text)" bg="var(--refund-bg)" textColor="var(--refund-text)" icon="refund" />
           </div>
 
           {ready && hasData && <>
@@ -266,7 +266,7 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
                   <ResponsiveContainer width="100%" height={190}>
                     <PieChart>
                       <Pie data={donutData} cx="50%" cy="50%" innerRadius={58} outerRadius={85} paddingAngle={3} dataKey="fat" strokeWidth={0}>
-                        {donutData.map(m => <Cell key={m.id} fill={m.color} />)}
+                        {donutData.map(m => <Cell key={m.id} fill={marketplaceChartColor(m.id, isDark)} />)}
                       </Pie>
                       <text textAnchor="middle" dominantBaseline="middle">
                         <tspan x="50%" y="46%" fontSize={10} fill="var(--t3)">Total</tspan>
@@ -298,7 +298,7 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
                   <Tooltip content={<LineTooltip ttStyle={ttStyle} />} />
                   {effectiveMarkets.map(id => {
                     const m = MARKETPLACES.find(x => x.id === id)!
-                    return <Line key={id} type="monotone" dataKey={id} stroke={m.color} strokeWidth={2.5} dot={false} activeDot={{ r:4, fill:m.color, stroke:"var(--sf)", strokeWidth:2 }} />
+                    return <Line key={id} type="monotone" dataKey={id} stroke={marketplaceChartColor(m.id, isDark)} strokeWidth={2.5} dot={false} activeDot={{ r:4, fill:marketplaceChartColor(m.id, isDark), stroke:"var(--sf)", strokeWidth:2 }} />
                   })}
                 </LineChart>
               </ResponsiveContainer>
@@ -307,7 +307,7 @@ export default function Overview({ companyId, accounts, orders, onAccounts, data
                   const m = MARKETPLACES.find(x => x.id === id)!
                   return (
                     <div key={id} style={{ display:"flex", alignItems:"center", gap:6 }}>
-                      <span style={{ width:20, height:3, background:m.color, borderRadius:2 }} />
+                      <span style={{ width:20, height:3, background:marketplaceChartColor(m.id, isDark), borderRadius:2 }} />
                       <span style={{ fontSize:11, color:"var(--t2)" }}>{m.label}</span>
                     </div>
                   )
@@ -357,7 +357,7 @@ function AggKpi({ label, tip, value, growth, prevLabel, mono = true, emptyNote, 
         {emptyNote ? (
           <span style={{ fontSize:11, color:"var(--t3)", fontStyle:"italic", marginBottom:2 }}>{emptyNote}</span>
         ) : growth !== null
-          ? <span style={{ fontSize:11, fontWeight:700, padding:"3px 8px", borderRadius:20, background:neutralGrowth?'var(--sf3)':pos?"#DCFCE7":"#FEE2E2", color:neutralGrowth?'var(--t2)':pos?"#16a34a":"#dc2626", fontFamily:"'JetBrains Mono',monospace", whiteSpace:"nowrap", marginBottom:2 }}>
+          ? <span style={{ fontSize:11, fontWeight:700, padding:"3px 8px", borderRadius:20, background:neutralGrowth?'var(--sf3)':pos?"var(--success-bg)":"var(--error-bg)", color:neutralGrowth?'var(--t2)':pos?"var(--success-text)":"var(--error-text)", fontFamily:"'JetBrains Mono',monospace", whiteSpace:"nowrap", marginBottom:2 }}>
               <Icon name={pos ? "arrowUp" : "arrowDown"} size={12} /> {growth.replace("+","")}
             </span>
           : <span style={{ fontSize:11, color:"var(--t3)", fontStyle:"italic", marginBottom:2 }}>Sem base de comparação</span>

@@ -60,3 +60,28 @@ it('offers refusal, acceptance and a way to change the choice', async () => {
   await user.click(screen.getByRole('button', { name: 'Aceitar Analytics' }))
   expect(localStorage.getItem('omnimark_analytics_consent_v1')).toBe('granted')
 }, 15000)
+it('stops all collection in an already open tab when another tab revokes consent', async () => {
+  const analytics = await import('./analytics')
+  analytics.setAnalyticsConsent('granted'); analytics.trackScreen('orders')
+  const listener = vi.fn()
+  const unsubscribe = analytics.subscribeAnalyticsConsent(listener)
+  document.cookie = '_ga=test; Path=/'
+  localStorage.setItem(analytics.CONSENT_KEY, 'denied')
+  window.dispatchEvent(new StorageEvent('storage', { key:analytics.CONSENT_KEY, newValue:'denied' }))
+  const count = window.dataLayer!.length
+  analytics.trackEvent('login'); analytics.trackScreen('accounts')
+  expect(window.dataLayer).toHaveLength(count)
+  expect(document.cookie).not.toContain('_ga')
+  expect(listener).toHaveBeenCalledWith('denied')
+  expect(window.location.reload).toHaveBeenCalledOnce()
+  unsubscribe()
+})
+it('rechecks persisted consent before sending even when the storage event is delayed', async () => {
+  const analytics = await import('./analytics')
+  analytics.setAnalyticsConsent('granted'); analytics.trackScreen('orders')
+  localStorage.removeItem(analytics.CONSENT_KEY)
+  const count = window.dataLayer!.length
+  analytics.trackEvent('login')
+  expect(window.dataLayer).toHaveLength(count)
+  expect(window.location.reload).toHaveBeenCalledOnce()
+})

@@ -227,6 +227,11 @@ A implantação pública exige HTTPS, segredos próprios, backups e revisão de 
 
 ## Google Analytics 4
 
+O consentimento é sincronizado entre abas abertas. Recusar ou remover a
+preferência interrompe a coleta nas outras abas; uma aba que já carregou
+a tag é recarregada para descarregá-la. As preferências não são sincronizadas
+entre navegadores ou dispositivos.
+
 O frontend usa o ID público `G-9Y6DVJWVG3` em `apps/web/src/analytics.ts`,
 somente no host `teste.omnimark.tech`. Localhost e outros hosts não coletam.
 Não é necessário adicionar segredo ou variável no Coolify para o stage.
@@ -245,3 +250,12 @@ Após o deploy, aceite Analytics no site e navegue entre as telas. Confira
 `page_view` e os eventos no relatório **Tempo real**; valide no navegador que
 recusar antes do aceite não carrega `gtag/js` nem envia requisições Analytics.
 O teste de instalação do Google pode exigir aceitar Analytics primeiro.
+
+## Dependências e validação
+
+As suítes usam Vitest 4, com os testes da API limitados a `src/**/*.test.ts`
+para não executar novamente cópias compiladas em `dist`.
+O override de `deepmerge-ts` 8.0.2 aplica-se somente a `@prisma/config`:
+corrige o aviso GHSA-ggr8-5vv4-36mx mantendo Prisma 6. A compatibilidade do
+carregador é verificada em `prisma-config.test.ts`; mantenha esse teste e
+revise o override ao atualizar Prisma. Não há migração de schema associada.

@@ -1,4 +1,5 @@
 import { Icon } from './Icon'
+import { cloneElement, isValidElement, useId } from 'react'
 
 export default function AuthLayout({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
   return (
@@ -36,10 +37,13 @@ export default function AuthLayout({ children, wide }: { children: React.ReactNo
 
 
 export function FormField({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+  const id = useId()
+  const field = isValidElement<{ id?: string; 'aria-describedby'?: string; 'aria-invalid'?: boolean }>(children)
+    ? cloneElement(children, { id, 'aria-invalid': !!error, 'aria-describedby': error ? `${id}-error` : undefined }) : children
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      <label style={{ display: "contents" }}><span style={{ fontSize: 12, fontWeight: 600, color: "var(--t2)" }}>{label}</span>{children}</label>
-      {error && <span style={{ fontSize: 11, color: "#EF4444" }}>{error}</span>}
+      <label htmlFor={id} style={{ fontSize: 12, fontWeight: 600, color: "var(--t2)" }}>{label}</label>{field}
+      {error && <span id={`${id}-error`} style={{ fontSize: 12, color: "var(--error-text)" }}>{error}</span>}
     </div>
   )
 }
@@ -47,24 +51,26 @@ export function FormField({ label, error, children }: { label: string; error?: s
 export function inputStyle(hasError: boolean): React.CSSProperties {
   return {
     width: "100%", padding: "9px 12px", borderRadius: 8,
-    border: `1.5px solid ${hasError ? "#EF4444" : "var(--bd)"}`,
+    border: `1.5px solid ${hasError ? "var(--error-text)" : "var(--bd)"}`,
     background: "var(--inp)", color: "var(--t1)", fontSize: 13,
     fontFamily: "'DM Sans', sans-serif", outline: "none",
     boxSizing: "border-box",
   }
 }
 
-export function PasswordInput({ value, onChange, show, onToggle, error, placeholder }: {
+export function PasswordInput({ value, onChange, show, onToggle, error, placeholder, id, 'aria-describedby': describedBy, autoComplete = 'current-password' }: {
   value: string; onChange: (v: string) => void; show: boolean; onToggle: () => void; error: boolean; placeholder?: string
+  id?: string; 'aria-describedby'?: string; autoComplete?: string
 }) {
   return (
     <div style={{ position: "relative" }}>
       <input
+        id={id} aria-invalid={error} aria-describedby={describedBy}
         type={show ? "text" : "password"}
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder ?? "••••••••"}
-        autoComplete="off"
+        autoComplete={autoComplete}
         style={{ ...inputStyle(error), paddingRight: 40 }}
       />
       <button

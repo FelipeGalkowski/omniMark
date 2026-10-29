@@ -2,7 +2,7 @@ import { Icon } from './Icon'
 import { useState } from "react"
 import { useAuth } from "./auth"
 import { api } from './api'
-import { inputStyle, PasswordInput } from "./AuthLayout"
+import { inputStyle, PasswordInput, FormField } from "./AuthLayout"
 
 export default function MyAccountPage() {
   const { user, updateUser } = useAuth()
@@ -58,11 +58,10 @@ export default function MyAccountPage() {
       <p style={{ margin: "0 0 28px", fontSize: 13, color: "var(--t3)" }}>Gerencie seus dados de perfil.</p>
 
       <Section title="Perfil">
-        <Field label="Nome">
+        <FormField label="Nome" error={nameMsg}>
           <input value={name} onChange={e => { setName(e.target.value); setNameMsg("") }}
             style={inputStyle(!!nameMsg)} placeholder="Seu nome" />
-          {nameMsg && <span style={{ fontSize: 11, color: "#EF4444", marginTop: 4 }}>{nameMsg}</span>}
-        </Field>
+        </FormField>
         <Field label="E-mail">
           <div style={{ padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--bd)", background: "var(--sf2)", fontSize: 13, color: "var(--t3)", fontFamily: "'DM Sans',sans-serif" }}>
             {user.email}
@@ -75,14 +74,14 @@ export default function MyAccountPage() {
             {saving ? "Salvando…" : "Salvar alterações"}
           </button>
           {nameSaved && (
-            <span style={{ fontSize: 13, color: "#16a34a", fontWeight: 600 }}><Icon name="check" /> Salvo!</span>
+            <span style={{ fontSize: 13, color: "var(--success-text)", fontWeight: 600 }}><Icon name="check" /> Salvo!</span>
           )}
         </div>
       </Section>
 
       <Section title="Senha">
         {pwMsg && (
-          <div style={{ background: "#DCFCE7", border: "1px solid #86EFAC", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#166534", marginBottom: 4 }}>
+          <div style={{ background: "var(--success-bg)", border: "1px solid var(--success-border)", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "var(--success-text)", marginBottom: 4 }}>
             <Icon name="check" /> {pwMsg}
           </div>
         )}
@@ -137,7 +136,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      <label style={{ fontSize: 12, fontWeight: 600, color: "var(--t2)" }}>{label}</label>
+      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--t2)" }}>{label}</span>
       {children}
     </div>
   )
@@ -147,11 +146,9 @@ function PwField({ label, value, onChange, show, onToggle, error }: {
   label: string; value: string; onChange: (v: string) => void; show: boolean; onToggle: () => void; error?: string
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      <label style={{ fontSize: 12, fontWeight: 600, color: "var(--t2)" }}>{label}</label>
-      <PasswordInput value={value} onChange={onChange} show={show} onToggle={onToggle} error={!!error} />
-      {error && <span style={{ fontSize: 11, color: "#EF4444" }}>{error}</span>}
-    </div>
+    <FormField label={label} error={error}>
+      <PasswordInput value={value} onChange={onChange} show={show} onToggle={onToggle} error={!!error} autoComplete={label === 'Senha atual' ? 'current-password' : 'new-password'} />
+    </FormField>
   )
 }
 

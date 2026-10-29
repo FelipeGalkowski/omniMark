@@ -142,6 +142,7 @@ export default function App() {
   }, [user?.id, user?.isDemoUser, companyId, reloadKey])
 
   function handleLogin(next: User) {
+    setConnectionMessage('')
     trackEvent(next.isDemoUser ? 'demo_start' : 'login')
     requestVersion.current++
     setOrders([])
@@ -159,7 +160,7 @@ export default function App() {
     }
     requestVersion.current++
     setUser(null); setCompanies([]); setAccounts([]); setOrders([]); setCompanyId(''); setLoading(false)
-    setError(''); setCompanyError(''); setShowCreate(false); setShowManage(false); setAuthScreen('login'); setPage('overview')
+    setError(''); setCompanyError(''); setConnectionMessage(''); setShowCreate(false); setShowManage(false); setAuthScreen('login'); setPage('overview')
   }
   async function updateUser(updates: { name: string }) {
     if (!user) return
@@ -195,7 +196,7 @@ export default function App() {
         <header className="app-header">
           <a className="brand" href="#" onClick={event => { event.preventDefault(); setPage('overview') }} aria-label="Omnimark — visão geral"><span className="brand-mark">OM</span><span>Omnimark</span></a>
           <span className="header-divider" />
-          {company && <CompanySelector company={company} companies={companies} accounts={accounts} onSwitch={id => { setAccounts(demo ? accounts : []); setCompanyId(id); setError('') }} onCreateOpen={() => setShowCreate(true)} onManageOpen={() => setShowManage(true)} />}
+          {company && <CompanySelector company={company} companies={companies} accounts={accounts} onSwitch={id => { setAccounts(demo ? accounts : []); setCompanyId(id); setError(''); setConnectionMessage('') }} onCreateOpen={() => setShowCreate(true)} onManageOpen={() => setShowManage(true)} />}
           <nav className="main-nav" aria-label="Navegação principal">
             {([['overview', 'Visão Geral'], ['orders', 'Pedidos'], ['accounts', 'Contas']] as [Page, string][]).map(([id, label]) => <button key={id} aria-current={page === id ? 'page' : undefined} onClick={() => setPage(id)}>{label}</button>)}
           </nav>
@@ -203,9 +204,9 @@ export default function App() {
         </header>
         {demo && <div className="demo-banner" role="status">Demonstração · Dados fictícios de 2025 · Alterações não são salvas no servidor.<button onClick={handleLogout}>Sair da demonstração</button></div>}
         <main className="app-content">
-          {connectionMessage && <div className={`app-alert app-alert--${connectionStatus}`} role={connectionStatus === 'error' ? 'alert' : 'status'}>{connectionMessage}</div>}
-          {error && <div className="app-alert" role="alert">{error} <button style={btnSec} onClick={() => setReloadKey(key => key + 1)}>Tentar novamente</button></div>}
-          {loading ? <Spinner /> : companyError ? <div className="app-alert" role="alert">{companyError} <button style={btnSec} onClick={() => setReloadKey(key => key + 1)}>Tentar novamente</button></div> : page === 'myaccount' ? <MyAccountPage /> : !company ? <OnboardingPage user={user} onCreate={addCompany} /> : page === 'overview' ? <Overview dataReady={demo || accounts.some(account => account.companyId === company.id && account.active !== false && account.lastSync !== null)} accountsLoading={!demo && (accountRequest.companyId !== company.id || accountRequest.status === 'loading')} accountsError={!demo && accountRequest.companyId === company.id && accountRequest.status === 'error'} key={company.id} companyId={company.id} accounts={accounts} orders={demo ? ALL_ORDERS : orders.filter(order => order.companyId === company.id)} onAccounts={() => setPage('accounts')} /> : page === 'orders' ? <OrdersPage key={company.id} companyId={company.id} accounts={accounts} orders={demo ? ALL_ORDERS : orders.filter(order => order.companyId === company.id)} /> : <AccountsPage key={company.id} canEdit={company.canEdit} companyId={company.id} accounts={accounts} setAccounts={setAccounts} onDisconnected={id => { setOrders(previous => previous.filter(order => order.accountId !== id)); setConnectionMessage('Conta desconectada do OmniMark.'); if (!demo) setReloadKey(key => key + 1) }} />}
+          {page === 'accounts' && connectionMessage && <div className={`app-alert app-alert--${connectionStatus}`} role={connectionStatus === 'error' ? 'alert' : 'status'}>{connectionMessage}<button aria-label="Dispensar aviso de conexão" onClick={() => setConnectionMessage('')} style={btnSec}>Fechar</button></div>}
+          {error && !(page === 'orders' && accountRequest.status === 'error') && <div className="app-alert" role="alert">{error} <button style={btnSec} onClick={() => setReloadKey(key => key + 1)}>Tentar novamente</button></div>}
+          {loading ? <Spinner /> : companyError ? <div className="app-alert" role="alert">{companyError} <button style={btnSec} onClick={() => setReloadKey(key => key + 1)}>Tentar novamente</button></div> : page === 'myaccount' ? <MyAccountPage /> : !company ? <OnboardingPage user={user} onCreate={addCompany} /> : page === 'overview' ? <Overview dataReady={demo || accounts.some(account => account.companyId === company.id && account.active !== false && account.lastSync !== null)} accountsLoading={!demo && (accountRequest.companyId !== company.id || accountRequest.status === 'loading')} accountsError={!demo && accountRequest.companyId === company.id && accountRequest.status === 'error'} key={company.id} companyId={company.id} accounts={accounts} orders={demo ? ALL_ORDERS : orders.filter(order => order.companyId === company.id)} onAccounts={() => setPage('accounts')} /> : page === 'orders' ? <OrdersPage loading={!demo && (accountRequest.companyId !== company.id || accountRequest.status === 'loading')} loadError={!demo && accountRequest.companyId === company.id && accountRequest.status === 'error'} onRetry={() => setReloadKey(key => key + 1)} key={company.id} companyId={company.id} accounts={accounts} orders={demo ? ALL_ORDERS : orders.filter(order => order.companyId === company.id)} /> : <AccountsPage key={company.id} canEdit={company.canEdit} companyId={company.id} accounts={accounts} setAccounts={setAccounts} onDisconnected={id => { setOrders(previous => previous.filter(order => order.accountId !== id)); setConnectionMessage('Conta desconectada do OmniMark.'); if (!demo) setReloadKey(key => key + 1) }} />}
         </main>
       </div>
       {showCreate && <CreateCompanyModal onClose={() => setShowCreate(false)} onCreate={addCompany} />}

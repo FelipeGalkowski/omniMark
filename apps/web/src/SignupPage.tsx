@@ -76,7 +76,7 @@ export default function SignupPage({ onVerify, onBack }: Props) {
           </FormField>
 
           <FormField label="Senha" error={errors.pw}>
-            <PasswordInput value={pw} onChange={v => { setPw(v); setErrors(p => ({ ...p, pw: "" })) }}
+            <PasswordInput autoComplete="new-password" value={pw} onChange={v => { setPw(v); setErrors(p => ({ ...p, pw: "" })) }}
               show={showPw} onToggle={() => setShowPw(v => !v)} error={!!errors.pw} placeholder="Mínimo 10 caracteres" />
             {pw.length > 0 && (
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
@@ -97,7 +97,7 @@ export default function SignupPage({ onVerify, onBack }: Props) {
           </FormField>
 
           <FormField label="Confirmar senha" error={errors.confirm}>
-            <PasswordInput value={confirm} onChange={v => { setConfirm(v); setErrors(p => ({ ...p, confirm: "" })) }}
+            <PasswordInput autoComplete="new-password" value={confirm} onChange={v => { setConfirm(v); setErrors(p => ({ ...p, confirm: "" })) }}
               show={showCf} onToggle={() => setShowCf(v => !v)} error={!!errors.confirm} placeholder="Repita a senha" />
           </FormField>
         </div>

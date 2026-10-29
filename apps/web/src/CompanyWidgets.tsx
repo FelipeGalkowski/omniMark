@@ -1,29 +1,25 @@
+import { usePopover } from './usePopover'
 import { Icon, type IconName } from './Icon'
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { formatCNPJ, validateCNPJ, type Company, type Account } from './data'
 import { type ThemeMode } from './theme'
 import { type User } from './auth'
 import { ChevronIcon } from './ui'
+import Dialog from './Dialog'
+import { FormField } from './AuthLayout'
 const isDemo = (user: User) => user.isDemoUser
 
 export function UserMenu({ user, mode, onSetMode, onAccount, onLogout }: {
   user: User; mode: ThemeMode; onSetMode: (m: ThemeMode) => void; onAccount: () => void; onLogout: () => void
 }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
-    document.addEventListener("mousedown", h)
-    return () => document.removeEventListener("mousedown", h)
-  }, [open])
+  const { ref, id } = usePopover(open, () => setOpen(false))
 
   const initials = user.name.split(" ").filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase()).join("")
 
   return (
-    <div ref={ref} style={{ position:"relative" }}>
-      <button onClick={() => setOpen(v => !v)} style={{ display:"flex", alignItems:"center", gap:8, padding:"4px 10px 4px 4px", borderRadius:20, border:"1.5px solid var(--bd)", background:"transparent", cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>
+    <div data-popover ref={ref} style={{ position:"relative" }}>
+      <button aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(v => !v)} style={{ display:"flex", alignItems:"center", gap:8, padding:"4px 10px 4px 4px", borderRadius:20, border:"1.5px solid var(--bd)", background:"transparent", cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>
         <div style={{ width:26, height:26, borderRadius:"50%", background:"var(--t1)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
           <span style={{ fontSize:10, fontWeight:700, color:"var(--sf)" }}>{initials || "?"}</span>
         </div>
@@ -32,7 +28,7 @@ export function UserMenu({ user, mode, onSetMode, onAccount, onLogout }: {
       </button>
 
       {open && (
-        <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:12, boxShadow:`0 8px 24px var(--shd2)`, padding:"8px 0", minWidth:224, zIndex:200 }}>
+        <div id={id} style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:12, boxShadow:`0 8px 24px var(--shd2)`, padding:"8px 0", minWidth:224, zIndex:200 }}>
           <div style={{ padding:"10px 16px 12px", borderBottom:"1px solid var(--bd)" }}>
             <div style={{ fontSize:13, fontWeight:700, color:"var(--t1)" }}>{user.name}</div>
             <div style={{ fontSize:11, color:"var(--t3)", marginTop:2 }}>{user.email}</div>
@@ -67,7 +63,7 @@ export function UserMenu({ user, mode, onSetMode, onAccount, onLogout }: {
 
 function MenuBtn({ children, onClick, danger }: { children: React.ReactNode; onClick: () => void; danger?: boolean }) {
   return (
-    <button onClick={onClick} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"9px 16px", border:"none", background:"transparent", cursor:"pointer", fontSize:13, fontWeight:500, color: danger ? "#EF4444" : "var(--t2)", textAlign:"left", fontFamily:"'DM Sans',sans-serif" }}
+    <button onClick={onClick} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"9px 16px", border:"none", background:"transparent", cursor:"pointer", fontSize:13, fontWeight:500, color: danger ? "var(--error-text)" : "var(--t2)", textAlign:"left", fontFamily:"'DM Sans',sans-serif" }}
       onMouseEnter={e => e.currentTarget.style.background = "var(--hover)"}
       onMouseLeave={e => e.currentTarget.style.background = "transparent"}
     >
@@ -82,25 +78,18 @@ export function CompanySelector({ company, companies, accounts, onSwitch, onCrea
   onSwitch: (id: string) => void; onCreateOpen: () => void; onManageOpen: () => void
 }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
-    document.addEventListener("mousedown", h)
-    return () => document.removeEventListener("mousedown", h)
-  }, [open])
+  const { ref, id } = usePopover(open, () => setOpen(false))
 
   return (
-    <div ref={ref} style={{ position:"relative" }}>
-      <button onClick={() => setOpen(v => !v)} style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 12px", borderRadius:8, border:"1.5px solid var(--bd)", background:"var(--sf)", fontSize:13, fontWeight:600, color:"var(--t1)", cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>
+    <div data-popover ref={ref} style={{ position:"relative" }}>
+      <button aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(v => !v)} style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 12px", borderRadius:8, border:"1.5px solid var(--bd)", background:"var(--sf)", fontSize:13, fontWeight:600, color:"var(--t1)", cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>
         <Icon name="building" />
         <span style={{ maxWidth:160, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{company.name}</span>
         <ChevronIcon open={open} />
       </button>
 
       {open && (
-        <div style={{ position:"absolute", top:"calc(100% + 6px)", left:0, background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:10, boxShadow:`0 8px 24px var(--shd)`, padding:"6px 0", minWidth:220, zIndex:200 }}>
+        <div id={id} style={{ position:"absolute", top:"calc(100% + 6px)", left:0, background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:10, boxShadow:`0 8px 24px var(--shd)`, padding:"6px 0", minWidth:220, zIndex:200 }}>
           <div style={{ fontSize:10, fontWeight:700, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", padding:"4px 14px 8px" }}>Empresa</div>
           {companies.map(c => (
             <button key={c.id} onClick={() => { onSwitch(c.id); setOpen(false) }} style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 14px", border:"none", background: c.id===company.id ? "var(--sf3)" : "transparent", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", gap:8 }}
@@ -155,7 +144,7 @@ export function CreateCompanyModal({ onClose, onCreate }: { onClose: () => void;
   }
 
   return (
-    <ModalOverlay onClose={onClose}>
+    <ModalOverlay label="Cadastrar empresa" onClose={onClose}>
       <ModalHeader title={done ? "Cadastrando empresa…" : "Cadastrar empresa"} onClose={onClose} />
       <div style={{ padding:"20px 24px 24px" }}>
         {done ? (
@@ -195,7 +184,7 @@ export function ManageCompaniesModal({ companies, accounts, onClose, onUpdate, o
 }) {
   const [editing, setEditing] = useState<Company | null>(null)
   return (
-    <ModalOverlay onClose={onClose} wide>
+    <ModalOverlay label="Gerenciar empresas" onClose={onClose} wide>
       <ModalHeader title="Gerenciar empresas" onClose={onClose} />
       <div style={{ padding:"0 24px 24px", display:"flex", flexDirection:"column", gap:10, maxHeight:"60vh", overflow:"auto" }}>
         {editing ? (
@@ -285,14 +274,9 @@ export function EmptyNoCompany({ onCreateOpen }: { onCreateOpen: () => void }) {
 }
 
 
-function ModalOverlay({ children, onClose, wide }: { children: React.ReactNode; onClose: () => void; wide?: boolean }) {
+function ModalOverlay({ children, label, onClose, wide }: { children: React.ReactNode; label: string; onClose: () => void; wide?: boolean }) {
   return (
-    <>
-      <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.3)", zIndex:40 }} />
-      <div style={{ position:"fixed", top:"50%", left:"50%", transform:"translate(-50%,-50%)", background:"var(--sf)", borderRadius:16, boxShadow:`0 16px 48px var(--shd2)`, zIndex:50, width: wide?540:440, maxWidth:"calc(100vw - 32px)", maxHeight:"calc(100dvh - 48px)", overflow:"auto" }}>
-        {children}
-      </div>
-    </>
+    <Dialog label={label} onClose={onClose} style={{ width:wide ? 540 : 440 }}>{children}</Dialog>
   )
 }
 
@@ -308,17 +292,12 @@ function ModalHeader({ title, onClose }: { title: string; onClose: () => void })
 }
 
 function MField({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label style={{ display:"block" }}><span style={{ fontSize:12, fontWeight:600, color:"var(--t2)", display:"block", marginBottom:5 }}>{label}</span>{children}</label>
-      {error && <span style={{ fontSize:11, color:"#EF4444", marginTop:4, display:"block" }}>{error}</span>}
-    </div>
-  )
+  return <FormField label={label} error={error}>{children}</FormField>
 }
 
 const mInputStyle = (hasError: boolean): React.CSSProperties => ({
   width:"100%", padding:"9px 12px", borderRadius:8,
-  border:`1.5px solid ${hasError ? "#EF4444" : "var(--bd)"}`,
+  border:`1.5px solid ${hasError ? "var(--error-text)" : "var(--bd)"}`,
   background:"var(--inp)", color:"var(--t1)", fontSize:13,
   fontFamily:"'DM Sans',sans-serif", outline:"none",
 })

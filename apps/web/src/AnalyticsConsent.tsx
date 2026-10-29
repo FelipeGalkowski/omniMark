@@ -1,9 +1,10 @@
-import { useState } from 'react'
-import { analyticsAvailable, readConsent, setAnalyticsConsent, type Consent } from './analytics'
+import { useEffect, useState } from 'react'
+import { analyticsAvailable, readConsent, setAnalyticsConsent, subscribeAnalyticsConsent, type Consent } from './analytics'
 import { btnPri, btnSec } from './ui'
 
 export default function AnalyticsConsent() {
   const [open, setOpen] = useState(() => readConsent() === null)
+  useEffect(() => subscribeAnalyticsConsent(value => setOpen(value === null)), [])
   if (!analyticsAvailable()) return null
   function choose(value: Consent) { setAnalyticsConsent(value); setOpen(false) }
   return open ? <section className="analytics-consent" aria-label="Preferências de Analytics">
