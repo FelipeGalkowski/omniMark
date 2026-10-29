@@ -376,7 +376,7 @@ function ConnectModal({ onClose, onConnect, demo, companyId }: { companyId: stri
           {step === "choose" && (
             <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
               <p style={{ margin:"0 0 8px", fontSize:13, color:"var(--t3)" }}>Selecione o marketplace que deseja integrar:</p>
-              {MARKETPLACES.map(m => (
+              {MARKETPLACES.filter(m => m.id !== 'amazon').map(m => (
                 <button key={m.id} onClick={() => handleChoose(m.id)} style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 18px", borderRadius:12, border:"1.5px solid var(--bd)", background:"var(--sf)", cursor:"pointer", textAlign:"left", transition:"border-color 0.15s", fontFamily:"'DM Sans',sans-serif" }}
                   onMouseEnter={e => e.currentTarget.style.borderColor=m.color}
                   onMouseLeave={e => e.currentTarget.style.borderColor="var(--bd)"}
