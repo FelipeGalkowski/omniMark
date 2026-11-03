@@ -54,6 +54,26 @@ const tokenResponse = z.object({
 })
 export type ShopeeTokens = { accessToken: string; refreshToken: string; shopId: string; partnerId: string }
 
+// Only fixed labels leave this function. Provider messages can echo credentials.
+function tokenFailureDetail(body: unknown) {
+  if (!body || typeof body !== 'object') return 'Resposta sem diagnóstico JSON.'
+  const record = body as Record<string, unknown>
+  const knownCodes = new Set(['error_auth', 'error_sign', 'error_param', 'error_permission', 'error_api_permission',
+    'error_api_call_restricted', 'source_ip_undeclared', 'error_partner_key_expired', 'error_not_found',
+    'error_code', 'error_invalid_code', 'error_expired_code', 'invalid_code', 'invalid_auth_code',
+    'invalid_authorization_code', 'expired_code', 'wrong_code', 'error_ip', 'error_limit', 'error_rate_limit'])
+  const code = typeof record.error === 'string' && knownCodes.has(record.error) ? record.error : 'não classificado'
+  const message = typeof record.message === 'string' ? record.message.toLowerCase() : ''
+  const topics = [
+    [/signature|\bsign\b/, 'assinatura'], [/\bip\b|whitelist/, 'IP'],
+    [/permission|restricted|forbidden/, 'permissão'], [/\bcode\b/, 'código de autorização'],
+    [/partner.?key/, 'chave do aplicativo'], [/timestamp|\btime\b/, 'horário'],
+    [/expired|invalid|wrong|incorrect/, 'valor inválido ou expirado'],
+  ] as const
+  const mentions = topics.filter(([pattern]) => pattern.test(message)).map(([, label]) => label)
+  return `Erro Shopee: ${code}.${mentions.length ? ` A mensagem menciona: ${mentions.join(', ')}.` : ''}`
+}
+
 async function requestTokens(config: Configuration, path: string, shopId: string, payload: Record<string, unknown>, request: typeof fetch) {
   idString.parse(shopId)
   // Token exchange and refresh are single-use operations. Never retry blindly.
@@ -69,10 +89,10 @@ async function requestTokens(config: Configuration, path: string, shopId: string
     throw new SyncError(429, 'A Shopee limitou as consultas. Aguarde antes de tentar novamente.', false, undefined, retryMs)
   }
   // Never pass provider messages, fetch errors or Zod token payloads to logs/UI.
-  if (!response.ok) throw new SyncError(502, `A Shopee recusou a solicitação (HTTP ${response.status}). Confira a configuração e as permissões do aplicativo.`)
   const body: unknown = await response.json().catch(() => null)
+  if (!response.ok) throw new SyncError(502, `A Shopee recusou a solicitação (HTTP ${response.status}). ${tokenFailureDetail(body)}`)
   if (body && typeof body === 'object' && 'error' in body && typeof body.error === 'string' && body.error !== '') {
-    throw new SyncError(502, 'A Shopee retornou uma recusa de autorização. Confira as credenciais de produção e as permissões do aplicativo.')
+    throw new SyncError(502, `A Shopee retornou uma recusa de autorização. ${tokenFailureDetail(body)}`)
   }
   const parsed = tokenResponse.safeParse(body)
   if (!parsed.success) throw new SyncError(502, 'A resposta de autorização da Shopee não contém os campos no formato esperado pelo OmniMark.')

@@ -113,6 +113,26 @@ it('does not automatically repeat single-use operations on HTTP, network or JSON
   await expect(refreshShopeeTokens(shopeeConfiguration(origin), stored(), request)).rejects.toMatchObject({ code: 429, retryAfterMs: 120000, reconnect: false })
 })
 
+it.each([403, 200])('classifies real token refusals on HTTP %s without echoing provider values', async status => {
+  const request = vi.fn(async () => response({ error: 'invalid_code', message: 'Invalid code: private-code; partner-test',
+    access_token: 'private-access', refresh_token: 'private-refresh' }, status))
+  let failure: unknown
+  try { await exchangeShopeeCode(shopeeConfiguration(origin), 'private-code', '456', request) } catch (error) { failure = error }
+  expect(String(failure)).toContain('Erro Shopee: invalid_code')
+  expect(String(failure)).toContain('código de autorização')
+  expect(String(failure)).not.toMatch(/private-|partner-test/)
+  expect(request).toHaveBeenCalledOnce()
+})
+
+it('hides unrecognized provider codes and non-JSON error bodies', async () => {
+  for (const payload of [{ error: 'private-secret', message: 'private-secret' }, null, { error: { token: 'private-secret' } }]) {
+    await expect(exchangeShopeeCode(shopeeConfiguration(origin), 'private-code', '456',
+      vi.fn(async () => response(payload, 403)))).rejects.not.toThrow(/private-/)
+  }
+  await expect(exchangeShopeeCode(shopeeConfiguration(origin), 'private-code', '456',
+    vi.fn(async () => new Response('<html>private-secret</html>', { status: 403 })))).rejects.toThrow('sem diagnóstico JSON')
+})
+
 function database() {
   const config = shopeeConfiguration(origin)
   const account: any = { id: 'account', marketplace: 'SHOPEE', externalId: '456', environment: 'SANDBOX', syncLock: 'lease',
