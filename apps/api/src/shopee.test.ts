@@ -54,7 +54,7 @@ it('binds random hashed state to session/company/environment and stores encrypte
   expect(state).toMatch(/^[a-f0-9]{64}$/)
   expect(attempts.get(digest(state))).toMatchObject({ sessionHash: digest('original'), companyId, environment: 'SANDBOX', partnerId: '123' })
   expect((await callback(state)).headers.location).toBe(`${origin}/#shopee_state=${state}`)
-  expect(JSON.parse(crypt.open(attempts.get(digest(state)).codeCipher))).toEqual({ code: 'private-code', shopId: '456' })
+  expect(JSON.parse(crypt.open(attempts.get(digest(state)).codeCipher))).toEqual({ code: 'private-code', shopId: '456', receivedAt: expect.any(Number) })
   expect((await complete(state, { cookie: 'session=other' })).statusCode).toBe(400)
   expect(provider).not.toHaveBeenCalled()
   const done = await complete(state)
@@ -182,4 +182,27 @@ it('exchanges a callback only once under concurrent completion even when Shopee 
   expect((await callback(state)).statusCode).toBe(400)
   expect((await complete(state)).statusCode).toBe(400)
   expect(provider).toHaveBeenCalledTimes(1)
+})
+
+it('reports callback delay and a constrained provider reference without disclosing secrets', async () => {
+  const state = await start(); await callback(state)
+  const attempt = attempts.get(digest(state))
+  const payload = JSON.parse(crypt.open(attempt.codeCipher))
+  attempt.codeCipher = crypt.seal(JSON.stringify({ ...payload, receivedAt: Date.now() - 3000 }))
+  provider.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'invalid_code', message: 'Invalid code private-code',
+    request_id: '0123456789abcdef0123456789abcdef' }), { status: 403 }))
+  const result = await complete(state)
+  expect(result.json().error).toMatch(/Retorno até troca: [34]s/)
+  expect(result.json().error).toContain('Referência Shopee: 0123456789abcdef0123456789abcdef')
+  expect(result.body).not.toContain('private-')
+})
+
+it('omits untrusted references and accepts pending callbacks from the preceding deployment', async () => {
+  const state = await start(); await callback(state)
+  attempts.get(digest(state)).codeCipher = crypt.seal(JSON.stringify({ code: 'private-code', shopId: '456' }))
+  provider.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'invalid_code', request_id: 'private-access-token' }), { status: 403 }))
+  const result = await complete(state)
+  expect(result.json().error).toContain('Retorno até troca: indisponível')
+  expect(result.json().error).toContain('Referência Shopee: indisponível')
+  expect(result.body).not.toContain('private-')
 })

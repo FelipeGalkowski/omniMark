@@ -45,7 +45,7 @@ export function registerShopee(app: FastifyInstance, db: PrismaClient, authentic
     const { state, code, shop_id, error } = input.data
     const result = await db.shopeeOAuthAttempt.updateMany({ where: { stateHash: digest(state), expiresAt: { gt: new Date() },
       codeCipher: null, denied: false, environment: config.environment, partnerId: config.partnerId },
-      data: error ? { denied: true } : { codeCipher: config.crypt.seal(JSON.stringify({ code, shopId: shop_id })) } })
+      data: error ? { denied: true } : { codeCipher: config.crypt.seal(JSON.stringify({ code, shopId: shop_id, receivedAt: Date.now() })) } })
     if (result.count !== 1) return reply.code(400).send({ error: 'Autorização expirada ou já utilizada. Inicie novamente no OmniMark.' })
     return reply.redirect(`${origin}/#shopee_state=${state}`)
   })
@@ -65,8 +65,11 @@ export function registerShopee(app: FastifyInstance, db: PrismaClient, authentic
     if (claimed.count !== 1) return reply.code(400).send({ error: 'Autorização já utilizada.' })
     if (attempt.denied) return reply.code(400).send({ error: 'Autorização cancelada na Shopee.' })
     let stage = 'leitura da autorização'
+    let callbackDelaySeconds: number | null = null
     try {
-      const { code, shopId } = z.object({ code: z.string().min(1), shopId: shopIdInput }).parse(JSON.parse(config.crypt.open(attempt.codeCipher!)))
+      const { code, shopId, receivedAt } = z.object({ code: z.string().min(1), shopId: shopIdInput,
+        receivedAt: z.number().int().nonnegative().optional() }).parse(JSON.parse(config.crypt.open(attempt.codeCipher!)))
+      if (receivedAt !== undefined) callbackDelaySeconds = Math.max(0, Math.round((Date.now() - receivedAt) / 1000))
       stage = 'troca do código por acesso'
       const initial = await exchangeShopeeCode(config, code, shopId, request)
       // Initial shop-level token responses can omit identity. The documented
@@ -99,7 +102,10 @@ export function registerShopee(app: FastifyInstance, db: PrismaClient, authentic
       // Only locally authored SyncError messages are safe; never expose raw
       // fetch, Prisma, cryptography or Zod errors (which may contain secrets).
       const detail = error instanceof SyncError ? error.message : 'Não foi possível concluir esta etapa.'
-      return reply.code(502).send({ error: `Falha na conexão Shopee — ${stage}: ${detail} Inicie uma nova conexão pelo OmniMark.` })
+      const diagnostic = error instanceof SyncError ? error.diagnostic : undefined
+      if (diagnostic) req.log.warn({ shopee: diagnostic, stage, callbackDelaySeconds }, 'SHOPEE_CONNECT_FAILED')
+      const trace = diagnostic ? ` Retorno até troca: ${callbackDelaySeconds === null ? 'indisponível' : `${callbackDelaySeconds}s`}. Referência Shopee: ${diagnostic.reference}.` : ''
+      return reply.code(502).send({ error: `Falha na conexão Shopee — ${stage}: ${detail}${trace} Inicie uma nova conexão pelo OmniMark.` })
     }
   })
 }

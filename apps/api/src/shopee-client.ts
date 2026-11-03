@@ -90,9 +90,14 @@ async function requestTokens(config: Configuration, path: string, shopId: string
   }
   // Never pass provider messages, fetch errors or Zod token payloads to logs/UI.
   const body: unknown = await response.json().catch(() => null)
-  if (!response.ok) throw new SyncError(502, `A Shopee recusou a solicitação (HTTP ${response.status}). ${tokenFailureDetail(body)}`)
+  const rejection = (message: string) => {
+    const reference = body && typeof body === 'object' && 'request_id' in body && typeof body.request_id === 'string'
+      && /^[a-f0-9-]{16,64}$/i.test(body.request_id) ? body.request_id : 'indisponível'
+    return new SyncError(502, message, false, { reference, operation: path, providerStatus: response.status, detail: tokenFailureDetail(body) })
+  }
+  if (!response.ok) throw rejection(`A Shopee recusou a solicitação (HTTP ${response.status}). ${tokenFailureDetail(body)}`)
   if (body && typeof body === 'object' && 'error' in body && typeof body.error === 'string' && body.error !== '') {
-    throw new SyncError(502, `A Shopee retornou uma recusa de autorização. ${tokenFailureDetail(body)}`)
+    throw rejection(`A Shopee retornou uma recusa de autorização. ${tokenFailureDetail(body)}`)
   }
   const parsed = tokenResponse.safeParse(body)
   if (!parsed.success) throw new SyncError(502, 'A resposta de autorização da Shopee não contém os campos no formato esperado pelo OmniMark.')
