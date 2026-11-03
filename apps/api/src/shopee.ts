@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import type { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
 import { digest } from './mercadolivre.js'
+import { SyncError } from './order-sync.js'
 import { shopeeEnvironment, shopeeConfiguration, shopeeAuthorizationUrl, exchangeShopeeCode, refreshShopeeTokens } from './shopee-client.js'
 
 const stateInput = z.string().regex(/^[a-f0-9]{64}$/)
@@ -63,23 +64,27 @@ export function registerShopee(app: FastifyInstance, db: PrismaClient, authentic
     const claimed = await db.shopeeOAuthAttempt.deleteMany({ where: { stateHash: attempt.stateHash } })
     if (claimed.count !== 1) return reply.code(400).send({ error: 'Autorização já utilizada.' })
     if (attempt.denied) return reply.code(400).send({ error: 'Autorização cancelada na Shopee.' })
+    let stage = 'leitura da autorização'
     try {
       const { code, shopId } = z.object({ code: z.string().min(1), shopId: shopIdInput }).parse(JSON.parse(config.crypt.open(attempt.codeCipher!)))
+      stage = 'troca do código por acesso'
       const initial = await exchangeShopeeCode(config, code, shopId, request)
       // Initial shop-level token responses can omit identity. The documented
       // refresh response confirms shop_id and partner_id before any persistence.
+      stage = 'renovação inicial e confirmação da loja'
       const token = await refreshShopeeTokens(config, initial.tokens, request)
+      stage = 'gravação da conexão'
       await db.$transaction(async tx => {
         const current = await tx.companyMember.findUnique({ where: { userId_companyId: { userId: attempt.userId, companyId: attempt.companyId } } })
-        if (!current || !['OWNER', 'ADMIN'].includes(current.role)) throw new Error('Permissão alterada')
+        if (!current || !['OWNER', 'ADMIN'].includes(current.role)) throw new SyncError(403, 'Sua permissão na empresa foi alterada.')
         const existing = await tx.marketplaceAccount.findUnique({ where: { marketplace_externalId_environment: { marketplace: 'SHOPEE', externalId: shopId, environment: config.environment } } })
-        if (existing && existing.companyId !== attempt.companyId) throw new Error('Loja vinculada a outra empresa')
+        if (existing && existing.companyId !== attempt.companyId) throw new SyncError(409, 'A loja está vinculada a outra empresa no OmniMark.')
         let accountId: string
         if (existing) {
           const changed = await tx.marketplaceAccount.updateMany({ where: { id: existing.id, companyId: attempt.companyId,
             OR: [{ syncLockUntil: null }, { syncLockUntil: { lte: new Date() } }] },
             data: { status: 'CONNECTED', syncFailures: 0, syncError: null, nextSyncAt: new Date() } })
-          if (changed.count !== 1) throw new Error('Sincronização em andamento')
+          if (changed.count !== 1) throw new SyncError(409, 'Há uma sincronização em andamento. Aguarde antes de reconectar.')
           accountId = existing.id
         } else {
           const account = await tx.marketplaceAccount.create({ data: { companyId: attempt.companyId, marketplace: 'SHOPEE', externalId: shopId,
@@ -90,8 +95,11 @@ export function registerShopee(app: FastifyInstance, db: PrismaClient, authentic
         await tx.marketplaceCredential.upsert({ where: { accountId }, create: { accountId, ...data }, update: data })
       })
       return { connected: true, companyId: attempt.companyId, environment: config.environment }
-    } catch {
-      return reply.code(502).send({ error: 'Não foi possível concluir a conexão Shopee. Confira as credenciais, as permissões e se a loja já está vinculada a outra empresa; depois inicie novamente.' })
+    } catch (error) {
+      // Only locally authored SyncError messages are safe; never expose raw
+      // fetch, Prisma, cryptography or Zod errors (which may contain secrets).
+      const detail = error instanceof SyncError ? error.message : 'Não foi possível concluir esta etapa.'
+      return reply.code(502).send({ error: `Falha na conexão Shopee — ${stage}: ${detail} Inicie uma nova conexão pelo OmniMark.` })
     }
   })
 }

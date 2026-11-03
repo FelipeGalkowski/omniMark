@@ -69,9 +69,13 @@ async function requestTokens(config: Configuration, path: string, shopId: string
     throw new SyncError(429, 'A Shopee limitou as consultas. Aguarde antes de tentar novamente.', false, undefined, retryMs)
   }
   // Never pass provider messages, fetch errors or Zod token payloads to logs/UI.
-  if (!response.ok) throw new SyncError(502, 'A Shopee não confirmou a autorização. Confira a configuração e as permissões do aplicativo.')
-  const parsed = tokenResponse.safeParse(await response.json().catch(() => null))
-  if (!parsed.success) throw new SyncError(502, 'A Shopee retornou uma autorização inválida ou recusada.')
+  if (!response.ok) throw new SyncError(502, `A Shopee recusou a solicitação (HTTP ${response.status}). Confira a configuração e as permissões do aplicativo.`)
+  const body: unknown = await response.json().catch(() => null)
+  if (body && typeof body === 'object' && 'error' in body && typeof body.error === 'string' && body.error !== '') {
+    throw new SyncError(502, 'A Shopee retornou uma recusa de autorização. Confira as credenciais de produção e as permissões do aplicativo.')
+  }
+  const parsed = tokenResponse.safeParse(body)
+  if (!parsed.success) throw new SyncError(502, 'A resposta de autorização da Shopee não contém os campos no formato esperado pelo OmniMark.')
   const token = parsed.data
   if ((token.shop_id !== undefined && String(token.shop_id) !== shopId) ||
       (token.partner_id !== undefined && String(token.partner_id) !== config.partnerId) ||
