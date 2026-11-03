@@ -158,3 +158,28 @@ it('reports HTTP status but hides raw persistence and network errors', async () 
   expect(result.json().error).toContain('gravação da conexão')
   expect(result.body).not.toContain('private-')
 })
+
+it('preserves an encoded callback code through encryption and the production token request', async () => {
+  vi.stubEnv('SHOPEE_ENVIRONMENT', 'production')
+  const state = await start()
+  const code = 'private-code+A/B=%2B_abc-123'
+  const returned = await callback(state, new URLSearchParams({ code, shop_id: '456' }).toString())
+  expect(returned.statusCode).toBe(302)
+  expect((await complete(state)).statusCode).toBe(200)
+  const [url, init] = provider.mock.calls[0]
+  expect(url.origin + url.pathname).toBe('https://partner.shopeemobile.com/api/v2/auth/token/get')
+  expect(JSON.parse(init.body)).toEqual({ code, partner_id: 123, shop_id: 456 })
+  expect(url.searchParams.get('partner_id')).toBe('123')
+})
+
+it('exchanges a callback only once under concurrent completion even when Shopee refuses its code', async () => {
+  const state = await start(); await callback(state)
+  provider.mockImplementation(async () => new Response(JSON.stringify({ error: 'invalid_code', message: 'Invalid code' }), { status: 403 }))
+  const results = await Promise.all([complete(state), complete(state)])
+  expect(results.map(result => result.statusCode).sort()).toEqual([400, 502])
+  expect(provider).toHaveBeenCalledTimes(1)
+  expect(db.marketplaceAccount.create).not.toHaveBeenCalled()
+  expect((await callback(state)).statusCode).toBe(400)
+  expect((await complete(state)).statusCode).toBe(400)
+  expect(provider).toHaveBeenCalledTimes(1)
+})
