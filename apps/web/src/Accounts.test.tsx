@@ -127,16 +127,16 @@ describe('Renomear contas', () => {
 })
 
 describe('Contas de sandbox', () => {
-  it('identifica os dados fictícios e explica as permissões antes de abrir o consentimento', async () => {
+  it('mantém apresentação padrão e explica as permissões antes de abrir o consentimento', async () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify({ environment: 'SANDBOX' }), { status: 200 }))
     vi.stubGlobal('fetch', fetch)
     render(<Fixture marketplace="magalu" environment="SANDBOX" active />)
-    expect(screen.getByRole('note').textContent).toContain('pedidos desta integração são fictícios')
-    expect(screen.getByText('Sandbox · dados fictícios')).toBeTruthy()
+    expect(screen.queryByRole('note')).toBeNull()
+    expect(screen.queryByText(/Sandbox · dados fictícios/)).toBeNull()
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'Conectar nova conta' }))
     await user.click(screen.getByRole('button', { name: 'Magalu' }))
-    expect(await screen.findByText(/Você pode usar seu ID pessoal/)).toBeTruthy()
+    expect(await screen.findByText(/Autorize o acesso com seu ID Magalu/)).toBeTruthy()
     expect(screen.getByText(/permissões de catálogo/)).toBeTruthy()
     expect(fetch).toHaveBeenCalledWith('/api/integrations/magalu/environment', expect.any(Object))
   })

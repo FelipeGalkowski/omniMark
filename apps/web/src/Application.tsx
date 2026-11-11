@@ -65,7 +65,7 @@ export default function App() {
     setConnectionStatus('info')
     setConnectionMessage(`Concluindo conexão com o ${oauthReturn!.label}…`)
     api<{ companyId: string; environment?: 'PRODUCTION' | 'SANDBOX' }>(`/integrations/${oauthReturn!.provider}/complete`, { method: 'POST', body: JSON.stringify({ state: oauthState }) })
-      .then(result => { setCompanyId(result.companyId); setPage('accounts'); setReloadKey(key => key + 1); setConnectionStatus('success'); setConnectionMessage(result.environment === 'SANDBOX' ? `Conta conectada ao sandbox ${oauthReturn!.label}. Os pedidos fictícios serão importados automaticamente.` : `Conta conectada ao ${oauthReturn!.label}. A importação será iniciada automaticamente.`) })
+      .then(result => { setCompanyId(result.companyId); setPage('accounts'); setReloadKey(key => key + 1); setConnectionStatus('success'); setConnectionMessage(`Conta conectada ao ${oauthReturn!.label}. A importação será iniciada automaticamente.`) })
       .catch((failure: Error) => { setConnectionStatus('error'); setConnectionMessage(failure.message) })
   }, [oauthState, user, loading, companies])
   const isDark = themeMode === 'dark' || (themeMode === 'system' && sysDark)

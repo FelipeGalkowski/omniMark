@@ -10,7 +10,7 @@ import {
   type Account, type Order, type OrderStatus, type MarketplaceId,
 } from "./data"
 import {
-  DateRangePicker, AccountDropdown, MarketplaceDropdown, StatusDropdown, SandboxNotice,
+  DateRangePicker, AccountDropdown, MarketplaceDropdown, StatusDropdown,
   StatusBadge, EmptyState, btnSec, btnPri, MarketplaceDot,
 } from "./ui"
 
@@ -74,7 +74,6 @@ export default function OrdersPage({ companyId, accounts, orders, loading = fals
 
   return (
     <div className="page-body" style={{ padding:"24px 28px", display:"flex", flexDirection:"column", gap:16, position:"relative" }}>
-      <SandboxNotice accounts={companyAccounts} />
       {loadError && hasImportedOrders && <div className="app-alert app-alert--warning" role="status">Não foi possível atualizar os pedidos. Exibindo a última consulta disponível.{onRetry && <button style={btnSec} onClick={onRetry}>Tentar novamente</button>}</div>}
 
       <div style={{ background:"var(--sf)", border:"1px solid var(--bd)", borderRadius:12, padding:"14px 18px", display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>

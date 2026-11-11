@@ -16,14 +16,6 @@ export interface DateRangeValue {
   to: Date
 }
 
-export function SandboxNotice({ accounts }: { accounts: Account[] }) {
-  const marketplaces = [...new Set(accounts.filter(account => account.active !== false && account.environment === 'SANDBOX').map(account => MARKETPLACES.find(item => item.id === account.marketplace)?.label).filter(Boolean))]
-  if (!marketplaces.length) return null
-  return <div role="note" style={{ padding:'10px 16px', border:'1px solid var(--info-border)', borderRadius:10, background:'var(--info-bg)', color:'var(--info-text)', fontSize:12, lineHeight:1.6 }}>
-    <strong>Sandbox {marketplaces.join(' e ')}.</strong> Os pedidos desta integração são fictícios e podem compor os indicadores exibidos. Use-os somente para testes.
-  </div>
-}
-
 interface DateRangePickerProps {
   value: DateRangeValue
   onChange: (r: DateRangeValue) => void

@@ -91,7 +91,7 @@ export function registerShopee(app: FastifyInstance, db: PrismaClient, authentic
           accountId = existing.id
         } else {
           const account = await tx.marketplaceAccount.create({ data: { companyId: attempt.companyId, marketplace: 'SHOPEE', externalId: shopId,
-            environment: config.environment, label: `Shopee${config.environment === 'SANDBOX' ? ' Sandbox' : ''} · ${shopId}`, status: 'CONNECTED' } })
+            environment: config.environment, label: `Shopee · ${shopId}`, status: 'CONNECTED' } })
           accountId = account.id
         }
         const data = { tokenCipher: config.crypt.seal(JSON.stringify(token.tokens)), expiresAt: token.expiresAt }

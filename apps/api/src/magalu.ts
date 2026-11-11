@@ -106,7 +106,7 @@ export function registerMagalu(app: FastifyInstance, db: PrismaClient, authentic
       if (!config.scopes.every(scope => token.scope.split(/\s+/).includes(scope))) throw new Error('Permissões insuficientes')
       const tenant = magaluTenant(token.access_token)
       if (config.environment === 'SANDBOX' && !magaluHasAudience(token.access_token, config.baseUrl)) throw new SyncError(502,
-        'A autorização não inclui a audiência do sandbox Magalu. Atualize a audiência do client no ID Magalu para https://api-sandbox.magalu.com e inicie uma nova conexão.')
+        'A autorização não inclui o acesso necessário à integração Magalu. Confira a configuração do aplicativo no ID Magalu e inicie uma nova conexão.')
       const seller = config.environment === 'SANDBOX' ? await onboardMagaluSandbox(token.access_token, tenant, request) : { sellerId: tenant, channelId: null }
       await db.$transaction(async tx => {
         const current = await tx.companyMember.findUnique({ where: { userId_companyId: { userId: attempt.userId, companyId: attempt.companyId } } })
@@ -118,7 +118,7 @@ export function registerMagalu(app: FastifyInstance, db: PrismaClient, authentic
         const context = { environment: config.environment, magaluSellerId: seller.sellerId, magaluChannelId: seller.channelId }
         const account = existing
           ? await tx.marketplaceAccount.update({ where: { id: existing.id }, data: { ...context, status: 'CONNECTED', syncError: null, syncFailures: 0, nextSyncAt: new Date() } })
-          : await tx.marketplaceAccount.create({ data: { ...context, companyId: attempt.companyId, marketplace: 'MAGALU', externalId: tenant, label: `Magalu${config.environment === 'SANDBOX' ? ' Sandbox' : ''} · ${tenant.slice(0, 8)}`, status: 'CONNECTED' } })
+          : await tx.marketplaceAccount.create({ data: { ...context, companyId: attempt.companyId, marketplace: 'MAGALU', externalId: tenant, label: `Magalu · ${tenant.slice(0, 8)}`, status: 'CONNECTED' } })
         const data = { tokenCipher: config.crypt.seal(JSON.stringify({ accessToken: token.access_token, refreshToken: token.refresh_token })), expiresAt: new Date(Date.now() + token.expires_in * 1000) }
         await tx.marketplaceCredential.upsert({ where: { accountId: account.id }, create: { accountId: account.id, ...data }, update: data })
       })

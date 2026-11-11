@@ -190,7 +190,7 @@ describe('Magalu OAuth', () => {
     const { state } = await start(); await callback(state)
     const response = await complete(state)
     expect(response.statusCode).toBe(502)
-    expect(response.json().error).toContain('audiência do sandbox Magalu')
+    expect(response.json().error).toContain('acesso necessário à integração Magalu')
     expect(provider).toHaveBeenCalledOnce()
     expect(db.marketplaceCredential.upsert).not.toHaveBeenCalled()
   })

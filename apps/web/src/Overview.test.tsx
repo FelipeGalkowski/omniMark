@@ -19,12 +19,12 @@ describe('Cards de indicadores', () => {
     const channelValue = screen.getByText('Faturamento').nextElementSibling
     expect(channelValue?.textContent?.replace(/\s/g, ' ')).toBe('R$ 99,90')
   })
-  it('identifica o sandbox e exclui contas de outro ambiente dos indicadores', () => {
+  it('mantém apresentação padrão e exclui contas de outro ambiente dos indicadores', () => {
     const sandbox = { ...account, marketplace: 'magalu' as const, environment: 'SANDBOX' as const, active: true }
     const inactive = { ...account, id: 'inactive', name: 'Conta inativa', active: false, lastSync: new Date() }
     const inactiveOrder = { ...paid, id: 'inactive-order', accountId: 'inactive', items: [{ name: 'Outro ambiente', qty: 1, unitPrice: 9999 }] }
     render(<Overview companyId="company" accounts={[sandbox, inactive]} orders={[{ ...paid, marketplace: 'magalu' }, inactiveOrder]} onAccounts={() => {}} />)
-    expect(screen.getByRole('note').textContent).toContain('Sandbox Magalu')
+    expect(screen.queryByRole('note')).toBeNull()
     expect(text('Faturamento de vendas')).toContain('R$ 220')
     expect(text('Faturamento de vendas')).not.toContain('9.999')
   })

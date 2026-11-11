@@ -37,7 +37,7 @@ export type AccountRecord = { id: string; marketplace: string; label: string; st
 export function accountFromApi(record: AccountRecord, companyId: string): Account {
   const marketplace = marketplaces[record.marketplace]
   if (!marketplace) throw new Error('Marketplace não reconhecido.')
-  return { id: record.id, companyId, marketplace, name: record.label, environment: record.environment, active: record.active, status: { PENDING: 'pending', CONNECTED: 'connected', EXPIRED: 'reconnect_needed', ERROR: 'error' }[record.status] as Account['status'], lastSync: record.lastSyncAt ? new Date(record.lastSyncAt) : null, syncFrom: record.syncFrom ? new Date(record.syncFrom) : null, syncTo: record.syncTo ? new Date(record.syncTo) : null, errorMsg: record.syncError ?? undefined, synchronization: record.synchronization }
+  return { id: record.id, companyId, marketplace, name: record.environment === 'SANDBOX' ? record.label.replace(/^(Magalu|Shopee) Sandbox · /, '$1 · ') : record.label, environment: record.environment, active: record.active, status: { PENDING: 'pending', CONNECTED: 'connected', EXPIRED: 'reconnect_needed', ERROR: 'error' }[record.status] as Account['status'], lastSync: record.lastSyncAt ? new Date(record.lastSyncAt) : null, syncFrom: record.syncFrom ? new Date(record.syncFrom) : null, syncTo: record.syncTo ? new Date(record.syncTo) : null, errorMsg: record.syncError ?? undefined, synchronization: record.synchronization }
 }
 
 export type OrderRecord = Omit<Order, 'date' | 'financials'> & { date: string; financials?: (Omit<NonNullable<Order['financials']>, 'refunds'> & { refunds: { id: string; amount: number; status: 'pending' | 'confirmed'; date: string }[] }) | null }

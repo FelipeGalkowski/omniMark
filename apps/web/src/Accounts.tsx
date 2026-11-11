@@ -5,7 +5,7 @@ import { api } from "./api"
 import { useEffect, useRef, useState } from "react"
 import { useAuth } from "./auth"
 import { DEMO_NOW, MARKETPLACES, formatDateTime, type Account, type MarketplaceId } from "./data"
-import { EmptyState, SandboxNotice, btnPri, btnSec } from "./ui"
+import { EmptyState, btnPri, btnSec } from "./ui"
 
 const ACCT_STATUS = {
   pending: { label:"Aguardando conexão", bg:"#F1F5F9", color:"#475569", dot:"#94A3B8" },
@@ -89,7 +89,6 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
 
   return (
     <div className="page-body" style={{ padding:"24px 28px", display:"flex", flexDirection:"column", gap:20 }}>
-      <SandboxNotice accounts={companyAccounts} />
       <div style={{ background:"var(--sf3)", border:"1px solid var(--bd)", borderRadius:10, padding:"10px 16px", display:"flex", alignItems:"center", gap:10 }}>
         <Icon name="info" />
         <span style={{ fontSize:12, color:"var(--t2)" }}>
@@ -132,7 +131,6 @@ export default function AccountsPage({ companyId, accounts, setAccounts, canEdit
                   <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
                     <span style={{ fontWeight:700, fontSize:15, color:"var(--t1)", overflowWrap:'anywhere' }}>{acct.name}</span>
                     {acct.active === false ? <span style={{ fontSize:11, color:'var(--t3)' }}>Outro ambiente</span> : <AcctStatusBadge status={status} />}
-                    {acct.environment === 'SANDBOX' && <span style={{ fontSize:11, fontWeight:700, color:'#1D4ED8', background:'#DBEAFE', borderRadius:20, padding:'3px 8px' }}>Sandbox · dados fictícios</span>}
                   </div>
                   <div style={{ fontSize:12, color:"var(--t3)", marginTop:3 }}>{mkt.label}</div>
                   {!demo && <p style={{ fontSize:12, color:'var(--t3)', margin:'8px 0 0' }}>
@@ -360,8 +358,8 @@ function ConnectModal({ onClose, onConnect, demo, companyId }: { companyId: stri
           {!demo && step === "name" && mkt && <div className="stack-form"><h3>{mkt.label}</h3>{selMkt === 'mercadolivre' || selMkt === 'magalu' || selMkt === 'shopee' ? <>
             <p>Você será encaminhado ao {mkt.label} para autorizar o acesso à sua conta.</p>
             <p>A importação começa automaticamente após a autorização e continua em segundo plano.</p>
-            {selMkt === 'magalu' && <>{integrationEnvironment === 'SANDBOX' ? <><p><strong>Sandbox Magalu · dados fictícios.</strong> Você pode usar seu ID pessoal. A conexão prepara um vendedor fictício para testar pedidos.</p><p>Solicitamos leitura de pedidos e permissões de catálogo para criar o produto de teste.</p></> : <p>{integrationEnvironment ? 'Selecione a organização da sua loja vendedora no ID Magalu. Solicitamos leitura de pedidos e entregas.' : 'Consultando o ambiente da integração…'}</p>}<p><a href="/termos" target="_blank" rel="noreferrer">Termos de uso</a> · <a href="/privacidade" target="_blank" rel="noreferrer">Privacidade</a></p></>}
-            {selMkt === 'shopee' && <p>{integrationEnvironment === 'SANDBOX' ? 'Sandbox Shopee · dados fictícios. Autorize uma loja de teste brasileira por vez.' : integrationEnvironment ? 'Autorize uma loja brasileira por vez. Os dados disponíveis serão importados automaticamente.' : 'Consultando o ambiente da integração…'}</p>}
+            {selMkt === 'magalu' && <>{integrationEnvironment === 'SANDBOX' ? <><p>Autorize o acesso com seu ID Magalu.</p><p>Solicitamos leitura de pedidos e permissões de catálogo para preparar a integração.</p></> : <p>{integrationEnvironment ? 'Selecione a organização da sua loja vendedora no ID Magalu. Solicitamos leitura de pedidos e entregas.' : 'Consultando o ambiente da integração…'}</p>}<p><a href="/termos" target="_blank" rel="noreferrer">Termos de uso</a> · <a href="/privacidade" target="_blank" rel="noreferrer">Privacidade</a></p></>}
+            {selMkt === 'shopee' && <p>{integrationEnvironment ? 'Autorize uma loja brasileira por vez. Os dados disponíveis serão importados automaticamente.' : 'Consultando o ambiente da integração…'}</p>}
             {error && <p role="alert">{error}</p>}
             <button disabled={busy || ((selMkt === 'magalu' || selMkt === 'shopee') && !integrationEnvironment)} style={btnPri} onClick={authorize}>{busy ? 'Abrindo autorização…' : selMkt === 'shopee' ? 'Autorizar na Shopee' : selMkt === 'magalu' ? 'Autorizar com o ID Magalu' : 'Autorizar no Mercado Livre'}</button>
           </> : <p>A integração com este marketplace ainda está em desenvolvimento.</p>}<button style={btnSec} onClick={onClose}>Fechar</button></div>}

@@ -17,7 +17,7 @@ function mockFetch(handler: (path: string, init?: RequestInit) => { status?: num
 }
 
 describe('Frontend integrado', () => {
-  it('conclui o retorno Shopee e identifica o sandbox sem chamar outros provedores', async () => {
+  it('conclui o retorno Shopee com mensagem padrão sem chamar outros provedores', async () => {
     window.history.replaceState(null, '', '/#shopee_state=shopee-test')
     const fetch = mockFetch(path => {
       if (path === '/api/auth/me') return { body: { user } }
@@ -26,7 +26,7 @@ describe('Frontend integrado', () => {
       return { body: [] }
     })
     render(<Application />)
-    await screen.findByText('Conta conectada ao sandbox Shopee. Os pedidos fictícios serão importados automaticamente.')
+    await screen.findByText('Conta conectada ao Shopee. A importação será iniciada automaticamente.')
     expect(window.location.hash).toBe('')
     expect(fetch.mock.calls.filter(([path]) => path.endsWith('/complete'))).toEqual([
       ['/api/integrations/shopee/complete', expect.objectContaining({ method: 'POST', body: JSON.stringify({ state: 'shopee-test' }) })],
@@ -44,7 +44,7 @@ describe('Frontend integrado', () => {
     expect(fetch.mock.calls.some(([path]) => path.endsWith('/complete'))).toBe(false)
     window.history.replaceState(null, '', '/')
   })
-  it('inicia a conexão Shopee com aviso de sandbox e mostra configuração pendente sem simular sucesso', async () => {
+  it('inicia a conexão Shopee com orientação padrão e mostra configuração pendente sem simular sucesso', async () => {
     const fetch = mockFetch(path => {
       if (path === '/api/auth/me') return { body: { user } }
       if (path === '/api/companies') return { body: [{ id: 'company-real', name: 'Empresa real', role: 'OWNER' }] }
@@ -58,7 +58,7 @@ describe('Frontend integrado', () => {
     await action.click(screen.getByRole('button', { name: 'Contas' }))
     await action.click(screen.getByRole('button', { name: 'Conectar nova conta' }))
     await action.click(screen.getByRole('button', { name: 'Shopee' }))
-    expect(await screen.findByText(/Sandbox Shopee · dados fictícios/)).toBeTruthy()
+    expect(await screen.findByText(/Autorize uma loja brasileira por vez/)).toBeTruthy()
     await action.click(screen.getByRole('button', { name: 'Autorizar na Shopee' }))
     expect((await screen.findByRole('alert')).textContent).toBe('Configure as credenciais Shopee.')
     expect(fetch.mock.calls.some(([path, init]) => path.endsWith('/shopee/authorize') && init?.method === 'POST')).toBe(true)

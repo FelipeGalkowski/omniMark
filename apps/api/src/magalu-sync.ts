@@ -109,7 +109,7 @@ export async function syncMagaluAccount(db: PrismaClient, accountId: string, req
   if (account.marketplace !== 'MAGALU' || account.syncLock !== execution.lease) throw new SyncError(409, 'A sincronização perdeu sua reserva.')
   if (!account.credentials) throw new SyncError(409, 'Reconecte sua loja Magalu.', true)
   let context: ReturnType<typeof magaluAccountContext>
-  try { context = magaluAccountContext(account) } catch { throw new SyncError(409, 'Esta conta Magalu pertence a outro ambiente ou precisa concluir a configuração de sandbox. Conecte a conta no ambiente atual.', true) }
+  try { context = magaluAccountContext(account) } catch { throw new SyncError(409, 'Esta conta Magalu precisa ser conectada novamente para concluir a configuração da integração.', true) }
   const crypt = vault(process.env.TOKEN_ENCRYPTION_KEY ?? '')
   let tokens = z.object({ accessToken: z.string().min(1), refreshToken: z.string().min(1) }).parse(JSON.parse(crypt.open(account.credentials.tokenCipher)))
   let credentialCipher = account.credentials.tokenCipher
